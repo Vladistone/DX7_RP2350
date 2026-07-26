@@ -79,8 +79,8 @@ static void system_init(void) {
     tft_init(); 
     printf("[INIT] TFT Display... OK\n");
 
-    encoder_init(); // Инициализирует GP10, GP11 и GP13 (ENC_PIN_SW)
-    printf("[INIT] Encoder & SW (GP13)... OK\n");
+    encoder_init(); // Инициализирует GP4, GP5 и GP14 (ENC_PIN_SW)
+    printf("[INIT] Encoder & SW (GP14)... OK\n");
 
     sd_spi_init();
     printf("[INIT] SD Card SPI... OK\n");
@@ -120,7 +120,7 @@ int main(void) {
 
     while (true) {
         // -------------------------------------------------------------------
-        // А. Опрос энкодера и его кнопки SW (GP13)
+        // А. Опрос энкодера и его кнопки SW (GP14)
         // -------------------------------------------------------------------
         int enc_delta         = encoder_get_delta();
         bool enc_single_click = encoder_is_button_pressed(); // Одиночное нажатие GP13

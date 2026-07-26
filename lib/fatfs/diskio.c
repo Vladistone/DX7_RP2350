@@ -17,41 +17,43 @@ static BYTE spi_xfer(BYTE data) {
 
 // Отправка команды SD-карте
 static BYTE send_cmd(BYTE cmd, DWORD arg) {
-    BYTE n, res;
+    BYTE res;
+    int n;
 
-    if (cmd & 0x80) { // ACMD класс команд
+    if (cmd & 0x80) { 
         cmd &= 0x7F;
-        res = send_cmd(55, 0); // CMD55
+        res = send_cmd(55, 0);
         if (res > 1) return res;
     }
 
-    // Ждем готовности карты
-    for (int i = 0; i < 1000; i++) {
-        if (spi_xfer(0xFF) == 0xFF) break;
-        sleep_us(10);
-    }
+    sd_cs_deselect();
+    spi_xfer(0xFF);
+    sd_cs_select();
+    spi_xfer(0xFF);
 
-    // Передаем пакет команды (6 байт)
-    spi_xfer(0x40 | cmd);
+    spi_xfer(cmd | 0x40);
     spi_xfer((BYTE)(arg >> 24));
     spi_xfer((BYTE)(arg >> 16));
     spi_xfer((BYTE)(arg >> 8));
     spi_xfer((BYTE)arg);
 
-    // CRC (контрольная сумма) обязательна только для CMD0 и CMD8
     n = 0x01;
-    if (cmd == 0)  n = 0x95; // CRC для CMD0(0)
-    if (cmd == 8)  n = 0x87; // CRC для CMD8(0x1AA)
+    if (cmd == 0) n = 0x95; 
+    if (cmd == 8) n = 0x87; 
     spi_xfer(n);
 
-    // Ожидаем ответ от карты (R1 ответ)
-    n = 10;
+    // ПРАВИЛЬНАЯ РЕАЛИЗАЦИЯ ОЖИДАНИЯ С ЗАДЕРЖКОЙ ПОД RP2350
+    n = 2000; // Увеличиваем число попыток для медленных карт
     do {
         res = spi_xfer(0xFF);
-    } while ((res & 0x80) && --n);
+        if (!(res & 0x80)) break; // Если старший бит равен 0 — ответ получен!
+        sleep_us(10); // Даем карте 10 микросекунд на обработку между тактами
+    } while (--n);
 
+    sd_cs_deselect(); 
     return res;
 }
+
 
 DSTATUS disk_status(BYTE pdrv) {
     if (pdrv != DEV_MMC) return STA_NOINIT;
@@ -71,12 +73,15 @@ DSTATUS disk_initialize(BYTE pdrv) {
     sd_cs_deselect();
     for (int n = 0; n < 10; n++) spi_xfer(0xFF);
 
-    // 2. Включаем CS и переводим карту в SPI-режим (CMD0)
-    sd_cs_select();
+    // 2. Опрашиваем карту (Внутри send_cmd CS сам включится и выключится)
     if (send_cmd(0, 0) == 1) { // Карта перешла в Idle state
         ty = 0;
         if (send_cmd(8, 0x1AA) == 1) { // Проверка SDv2 (поддержка больших карт)
+            // Перед чтением регистра OCR нужно активировать CS, так как send_cmd его уже выключил
+            sd_cs_select(); 
             for (int n = 0; n < 4; n++) ocr[n] = spi_xfer(0xFF);
+            sd_cs_deselect(); // Выключаем после чтения байт
+
             if (ocr[2] == 0x01 && ocr[3] == 0xAA) {
                 // Инициализация карт высокой емкости (SDHC/SDXC) через ACMD41
                 for (tmr = 1000; tmr; tmr--) {
@@ -84,21 +89,26 @@ DSTATUS disk_initialize(BYTE pdrv) {
                     sleep_ms(1);
                 }
                 if (tmr && send_cmd(58, 0) == 0) { // CMD58: Чтение OCR
+                    sd_cs_select(); // Активируем для чтения регистра
                     for (int n = 0; n < 4; n++) ocr[n] = spi_xfer(0xFF);
+                    sd_cs_deselect(); // Выключаем
+                    
                     ty = (ocr[0] & 0x40) ? 12 : 4; // SDv2 (Block) или SDv2 (Byte)
                 }
             }
         } else { // Старые карты SDv1 или MMC
-            ty = (send_cmd(0x80 | 41, 0) <= 1) ? 2 : 1; // SDv1 или MMC
+            ty = (send_cmd(0x80 | 41, 0) <= 1) ? 2 : 1; 
             for (tmr = 1000; tmr; tmr--) {
                 if (send_cmd(0x80 | 41, 0) == 0) break;
                 if (ty == 1 && send_cmd(1, 0) == 0) break;
                 sleep_ms(1);
             }
-            if (!tmr || send_cmd(16, 512) != 0) ty = 0; // Установка размера блока 512 байт
+            if (!tmr || send_cmd(16, 512) != 0) ty = 0; 
         }
     }
-    sd_cs_deselect();
+    
+    // Здесь sd_cs_deselect() больше не нужен, так как команды закрыты
+    sd_cs_deselect(); 
     spi_xfer(0xFF); // Холостой такт
 
     if (ty) {
@@ -109,6 +119,7 @@ DSTATUS disk_initialize(BYTE pdrv) {
 
     return STA_NOINIT;
 }
+
 
 DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count) {
     if (pdrv != DEV_MMC || !count) return RES_PARERR;
