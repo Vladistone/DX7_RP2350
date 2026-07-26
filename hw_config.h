@@ -13,29 +13,29 @@
 #define TFT_MOSI   3
 #define TFT_RST    12
 
-// 2. SD Card (SPI1)
-#define SD_SPI_PORT spi1
-#define SD_MISO_PIN 4
-#define SD_CS_PIN   5
-#define SD_SCK_PIN  6
-#define SD_MOSI_PIN 7
+// 2. Энкодер KY-040 (GPIO)
+#define ENC_PIN_A   4
+#define ENC_PIN_B   5
+#define ENC_PIN_SW  14
 
 // 3. MPR121 Touchpad (I2C0)
-#define I2C_PORT    i2c0
-#define I2C_SDA_PIN 8
-#define I2C_SCL_PIN 9
+#define I2C_PORT    i2c1
+#define I2C_SDA_PIN 6
+#define I2C_SCL_PIN 7
 #define MPR121_ADDR 0x5A
 
-// 4. Энкодер KY-040 (GPIO)
-#define ENC_PIN_A   10
-#define ENC_PIN_B   11
-#define ENC_PIN_SW  13
+// 4. SD Card (SPI1)
+#define SD_SPI_PORT   spi1
+#define SD_MISO_PIN       8
+#define SD_CS_PIN         9
+#define SD_SCK_PIN        10
+#define SD_MOSI_PIN       11
 
 // 5. UART MIDI (UART0)
 #define MIDI_UART_ID   uart0
 #define MIDI_BAUD_RATE 31250
-#define MIDI_TX_PIN    16
-#define MIDI_RX_PIN    17
+#define MIDI_TX_PIN    12
+#define MIDI_RX_PIN    13
 
 // 6. Системные пины (из main.c)
 #define BTN_SYS_MODE   23

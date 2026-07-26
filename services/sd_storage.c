@@ -93,7 +93,12 @@ static bool has_extension(const char *filename, const char *ext) {
 bool sd_storage_mount(void) {
     sd_spi_init(); // Низкоуровневый SPI из core/SD_card.h
 
-    FRESULT res = f_mount(&fs, "", 1); // Используем объявленную выше статику `fs`
+    FRESULT res = f_mount(&fs, "", 0); // 0 — зарегистрировать диск без немедленного чтения секторов
+        if (res != FR_OK) {
+            printf("[ERROR] SD Mount registration failed: %d\n", res);
+        } else {
+            printf("[INIT] SD Volume registered (Lazy Mount)\n");
+    }// Используем объявленную выше статику `fs`
     if (res == FR_OK) {
         sd_info.is_mounted = true;
         sd_spi_set_high_speed(); // Перевод SPI на рабочую частоту
