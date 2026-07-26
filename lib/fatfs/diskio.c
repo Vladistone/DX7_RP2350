@@ -42,24 +42,15 @@ static BYTE send_cmd(BYTE cmd, DWORD arg) {
     if (cmd == 8) n = 0x87; 
     spi_xfer(n);
 
-    // Безопасное ожидание ответа
-    n = 2000; 
+    // Чистый оригинальный цикл, но увеличиваем лимит итераций до 255 под скорость RP2350
+    n = 255; 
     do {
         res = spi_xfer(0xFF);
-        if (!(res & 0x80)) break; 
-        
-        // Задержку делаем СТРОГО для команды сброса CMD0, 
-        // чтобы не перегружать стек при рекурсивных вызовах ACMD41
-        if (cmd == 0) {
-            sleep_us(10); 
-        }
-    } while (--n);
+    } while ((res & 0x80) && --n);
 
     sd_cs_deselect(); 
     return res;
 }
-
-
 
 DSTATUS disk_status(BYTE pdrv) {
     if (pdrv != DEV_MMC) return STA_NOINIT;
