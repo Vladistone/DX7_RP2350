@@ -11,9 +11,19 @@
 // Низкоуровневая отправка/прием байта по SPI
 static BYTE spi_xfer(BYTE data) {
     BYTE out;
+    
+    // Безопасный сброс: вычитываем и выбрасываем мусор, 
+    // если он застрял в аппаратном FIFO приемника из-за наводок
+    while (spi_is_readable(SD_SPI_PORT)) {
+        (void)spi_get_hw(SD_SPI_PORT)->dr;
+    }
+
+    // Ваша оригинальная рабочая строка передачи данных
     spi_write_read_blocking(SD_SPI_PORT, &data, &out, 1);
+    
     return out;
 }
+
 
 // Отправка команды SD-карте
 static BYTE send_cmd(BYTE cmd, DWORD arg) {
