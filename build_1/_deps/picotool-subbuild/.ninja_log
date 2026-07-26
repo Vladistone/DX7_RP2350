@@ -1,0 +1,21 @@
+# ninja log v7
+0	11	1784543607956130793	picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-mkdir	5548435442737385
+0	11	1784543607956130793	/Users/vladistone/MyTools/Pico/projects/DX7_RP2350/build/_deps/picotool-subbuild/picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-mkdir	5548435442737385
+11	3468	1784543611413362536	picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-download	a729b5928b2c470e
+11	3468	1784543611413362536	/Users/vladistone/MyTools/Pico/projects/DX7_RP2350/build/_deps/picotool-subbuild/picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-download	a729b5928b2c470e
+3468	3505	1784543611413751952	picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-update	1b25ff4e976d595d
+3468	3505	1784543611413751952	/Users/vladistone/MyTools/Pico/projects/DX7_RP2350/build/_deps/picotool-subbuild/picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-update	1b25ff4e976d595d
+3505	3516	1784543611461227506	picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-patch	90f10ae691324313
+3505	3516	1784543611461227506	/Users/vladistone/MyTools/Pico/projects/DX7_RP2350/build/_deps/picotool-subbuild/picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-patch	90f10ae691324313
+3516	3527	1784543611471856657	picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-configure	27d730244f1ad46f
+3516	3527	1784543611471856657	/Users/vladistone/MyTools/Pico/projects/DX7_RP2350/build/_deps/picotool-subbuild/picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-configure	27d730244f1ad46f
+3527	3537	1784543611482336766	picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-build	78350fc2dd4b585b
+3527	3537	1784543611482336766	/Users/vladistone/MyTools/Pico/projects/DX7_RP2350/build/_deps/picotool-subbuild/picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-build	78350fc2dd4b585b
+3537	3548	1784543611492917292	picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-install	e79a81cc4a973441
+3537	3548	1784543611492917292	/Users/vladistone/MyTools/Pico/projects/DX7_RP2350/build/_deps/picotool-subbuild/picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-install	e79a81cc4a973441
+3548	3558	1784543611503268985	picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-test	b54add59dd2c114
+3548	3558	1784543611503268985	/Users/vladistone/MyTools/Pico/projects/DX7_RP2350/build/_deps/picotool-subbuild/picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-test	b54add59dd2c114
+3558	3573	1784543611517815630	CMakeFiles/picotool-populate-complete	4371ab08d2ad47ec
+3558	3573	1784543611517815630	picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-done	4371ab08d2ad47ec
+3558	3573	1784543611517815630	/Users/vladistone/MyTools/Pico/projects/DX7_RP2350/build/_deps/picotool-subbuild/CMakeFiles/picotool-populate-complete	4371ab08d2ad47ec
+3558	3573	1784543611517815630	/Users/vladistone/MyTools/Pico/projects/DX7_RP2350/build/_deps/picotool-subbuild/picotool-populate-prefix/src/picotool-populate-stamp/picotool-populate-done	4371ab08d2ad47ec

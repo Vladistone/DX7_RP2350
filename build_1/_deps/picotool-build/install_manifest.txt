@@ -1,0 +1,6 @@
+/Users/vladistone/MyTools/Pico/projects/DX7_RP2350/build/_deps/picotool/picotool
+/Users/vladistone/MyTools/Pico/projects/DX7_RP2350/build/_deps/picotool/picotoolTargets.cmake
+/Users/vladistone/MyTools/Pico/projects/DX7_RP2350/build/_deps/picotool/picotoolTargets-release.cmake
+/Users/vladistone/MyTools/Pico/projects/DX7_RP2350/build/_deps/picotool/picotoolConfig.cmake
+/Users/vladistone/MyTools/Pico/projects/DX7_RP2350/build/_deps/picotool/picotoolConfigVersion.cmake
+/Users/vladistone/MyTools/Pico/projects/DX7_RP2350/build/_deps/picotool/enc_bootloader.elf
