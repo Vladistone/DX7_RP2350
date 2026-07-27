@@ -44,5 +44,5 @@ void sd_spi_init(void) {
     // Перевод SPI на рабочую скорость (12.5 MHz - 25 MHz)
     void sd_spi_set_high_speed(void) {
         // Вызывается только ПОСЛЕ того, как карта ответила на команду CMD0 и перешла в SPI Mode
-        spi_set_baudrate(SD_SPI_PORT, 12500 * 1000);
+        spi_set_baudrate(SD_SPI_PORT, 2000 * 1000); // вместо 12500 * 1000
     }
