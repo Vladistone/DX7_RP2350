@@ -1,7 +1,5 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
-#include "pico/time.h"
-#include "hardware/timer.h"
 #include "hardware/spi.h"
 #include "ff.h"
 #include "diskio.h"
@@ -11,30 +9,15 @@
 #define DEV_MMC         0
 #define SD_CMD_TIMEOUT  10000
 
-/* ------------------------------------------------------------ */
-/*  НИЗКОУРОВНЕВЫЙ SPI ОБМЕН                                  */
-/* ------------------------------------------------------------ */
-
 static BYTE spi_xfer(BYTE data) {
     BYTE out;
-    int timeout = 1000;
-    // Очистка FIFO с таймаутом
-    while (spi_is_readable(SD_SPI_PORT) && timeout--) {
-        (void)spi_get_hw(SD_SPI_PORT)->dr;
-        sleep_us(10);
-    }
     spi_write_read_blocking(SD_SPI_PORT, &data, &out, 1);
     return out;
 }
 
-/* ------------------------------------------------------------ */
-/*  ОТПРАВКА КОМАНД SD-КАРТЕ                                     */
-/* ------------------------------------------------------------ */
-
 static BYTE send_cmd(BYTE cmd, DWORD arg) {
     BYTE res;
     int n;
-    int timeout = 500;
 
     if (cmd & 0x80) {
         cmd &= 0x7F;
@@ -58,22 +41,14 @@ static BYTE send_cmd(BYTE cmd, DWORD arg) {
     if (cmd == 8) n = 0x87;
     spi_xfer(n);
 
-    n = 255;
+    n = 10;
     do {
         res = spi_xfer(0xFF);
-        if (--timeout == 0) {
-            printf("[SD] send_cmd timeout\n");
-            return 0xFF;
-        }
     } while ((res & 0x80) && --n);
 
     sd_cs_deselect();
     return res;
 }
-
-/* ------------------------------------------------------------ */
-/*  ФУНКЦИИ ОПРОСА И ИНИЦИАЛИЗАЦИИ ДИСКА (DISKIO INTERFACE)      */
-/* ------------------------------------------------------------ */
 
 DSTATUS disk_status(BYTE pdrv) {
     if (pdrv != DEV_MMC) return STA_NOINIT;
@@ -81,160 +56,58 @@ DSTATUS disk_status(BYTE pdrv) {
 }
 
 DSTATUS disk_initialize(BYTE pdrv) {
-    BYTE ty = 0, ocr[4];
+    BYTE ty, ocr[4];
     UINT tmr;
-    static bool initialized = false;
 
-    if (initialized) {
-        printf("[SD] Already initialized, skipping.\n");
-        return 0;
-    }
-
-    printf("[SD] disk_initialize start\n");
-    if (pdrv != DEV_MMC) {
-        printf("[SD] Invalid drive\n");
-        return STA_NOINIT;
-    }
+    if (pdrv != DEV_MMC) return STA_NOINIT;
 
     sd_spi_init();
-    printf("[SD] SPI init done\n");
 
-    printf("[SD] Sending dummy clocks...\n");
     sd_cs_deselect();
-    for (int n = 0; n < 10; n++) {
-        spi_xfer(0xFF);
-        sleep_us(1);
-    }
-    printf("[SD] Dummy clocks sent\n");
+    for (int n = 0; n < 10; n++) spi_xfer(0xFF);
 
-    printf("[SD] Waiting 100ms...\n");
-    sleep_ms(100);
-    printf("[SD] Delay done\n");
-
-    int retry = 0;
-    bool init_ok = false;
-    while (retry < 3 && !init_ok) {
-        printf("[SD] Retry %d\n", retry);
-        sd_cs_deselect();
-        sleep_ms(10);
-
-        printf("[SD] Sending CMD0...\n");
-        sd_cs_select();
-        BYTE cmd0_res = send_cmd(0, 0);
-        printf("[SD] CMD0 response: %d\n", cmd0_res);
-
-        if (cmd0_res == 1) {
-            printf("[SD] CMD0 OK\n");
-            ty = 0;
-
-            printf("[SD] Sending CMD8...\n");
-            BYTE cmd8_res = send_cmd(8, 0x1AA);
-            printf("[SD] CMD8 response: %d\n", cmd8_res);
-
-            if (cmd8_res == 1) {
-                printf("[SD] CMD8 OK, reading OCR...\n");
-                sd_cs_select();
-                for (int n = 0; n < 4; n++) ocr[n] = spi_xfer(0xFF);
-                sd_cs_deselect();
-                printf("[SD] OCR: %02X %02X %02X %02X\n", ocr[0], ocr[1], ocr[2], ocr[3]);
-
-                if (ocr[2] == 0x01 && ocr[3] == 0xAA) {
-                    printf("[SD] SDv2 detected, sending ACMD41...\n");
-                    for (tmr = 2000; tmr; tmr--) {
-                        if (send_cmd(0x80 | 41, 0x40000000) == 0) break;
-                        if (tmr % 100 == 0) printf("[SD] ACMD41 wait %d\n", tmr);
-                        sleep_ms(2);
-                    }
-                    if (tmr) {
-                        printf("[SD] ACMD41 OK, sending CMD58...\n");
-                        if (send_cmd(58, 0) == 0) {
-                            sd_cs_select();
-                            for (int n = 0; n < 4; n++) ocr[n] = spi_xfer(0xFF);
-                            sd_cs_deselect();
-                            ty = (ocr[0] & 0x40) ? 12 : 4;
-                            init_ok = true;
-                            printf("[SD] SDv2 init OK, type: %d\n", ty);
-                        } else {
-                            printf("[SD] CMD58 failed\n");
-                        }
-                    } else {
-                        printf("[SD] ACMD41 timeout\n");
-                    }
-                } else {
-                    printf("[SD] Wrong OCR for SDv2\n");
+    sd_cs_select();
+    if (send_cmd(0, 0) == 1) {
+        ty = 0;
+        if (send_cmd(8, 0x1AA) == 1) {
+            for (int n = 0; n < 4; n++) ocr[n] = spi_xfer(0xFF);
+            if (ocr[2] == 0x01 && ocr[3] == 0xAA) {
+                for (tmr = 1000; tmr; tmr--) {
+                    if (send_cmd(0x80 | 41, 0x40000000) == 0) break;
+                    sleep_ms(1);
                 }
-            } else {
-                printf("[SD] CMD8 failed, trying old protocol...\n");
-                ty = 0;
-
-                printf("[SD] Trying ACMD41 for SDv1...\n");
-                if (send_cmd(0x80 | 41, 0) <= 1) {
-                    ty = 2;
-                    for (tmr = 2000; tmr; tmr--) {
-                        if (send_cmd(0x80 | 41, 0) == 0) break;
-                        if (tmr % 100 == 0) printf("[SD] SDv1 ACMD41 wait %d\n", tmr);
-                        sleep_ms(2);
-                    }
-                    if (tmr && send_cmd(16, 512) == 0) {
-                        init_ok = true;
-                        printf("[SD] SDv1 init OK\n");
-                    }
-                }
-
-                if (!init_ok) {
-                    printf("[SD] Trying MMC...\n");
-                    if (send_cmd(1, 0) == 0) {
-                        ty = 1;
-                        for (tmr = 2000; tmr; tmr--) {
-                            if (send_cmd(1, 0) == 0) break;
-                            if (tmr % 100 == 0) printf("[SD] MMC wait %d\n", tmr);
-                            sleep_ms(2);
-                        }
-                        if (tmr && send_cmd(16, 512) == 0) {
-                            init_ok = true;
-                            printf("[SD] MMC init OK\n");
-                        }
-                    }
-                }
-
-                if (!init_ok) {
-                    printf("[SD] Old protocol init failed\n");
+                if (tmr && send_cmd(58, 0) == 0) {
+                    for (int n = 0; n < 4; n++) ocr[n] = spi_xfer(0xFF);
+                    ty = (ocr[0] & 0x40) ? 12 : 4;
                 }
             }
         } else {
-            printf("[SD] CMD0 failed (response %d)\n", cmd0_res);
-        }
-
-        retry++;
-        if (!init_ok) {
-            printf("[SD] init retry %d\n", retry);
-            sd_cs_deselect();
-            sleep_ms(100);
-            sd_spi_init();
+            ty = (send_cmd(0x80 | 41, 0) <= 1) ? 2 : 1;
+            for (tmr = 1000; tmr; tmr--) {
+                if (send_cmd(0x80 | 41, 0) == 0) break;
+                if (ty == 1 && send_cmd(1, 0) == 0) break;
+                sleep_ms(1);
+            }
+            if (!tmr || send_cmd(16, 512) != 0) ty = 0;
         }
     }
 
     sd_cs_deselect();
     spi_xfer(0xFF);
 
-    if (init_ok) {
-        printf("[SD] Final OK, type: %d\n", ty);
-        initialized = true;
+    if (ty) {
+        sd_spi_set_high_speed();
         return 0;
     }
 
-    printf("[SD] Init failed after retries\n");
     return STA_NOINIT;
 }
-
-/* ------------------------------------------------------------ */
-/*  ФУНКЦИИ ЧТЕНИЯ/ЗАПИСИ ДАННЫХ (DISKIO INTERFACE)             */
-/* ------------------------------------------------------------ */
 
 DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count) {
     if (pdrv != DEV_MMC || !count) return RES_PARERR;
 
     sd_cs_select();
+
     DWORD token;
     if (count == 1) {
         if (send_cmd(17, sector) == 0) {
@@ -242,6 +115,7 @@ DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count) {
             do {
                 token = spi_xfer(0xFF);
             } while (token == 0xFF && --timeout);
+
             if (token == 0xFE) {
                 spi_read_blocking(SD_SPI_PORT, 0xFF, buff, 512);
                 spi_xfer(0xFF); spi_xfer(0xFF);
@@ -255,6 +129,7 @@ DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count) {
                 do {
                     token = spi_xfer(0xFF);
                 } while (token == 0xFF && --timeout);
+
                 if (token != 0xFE) break;
                 spi_read_blocking(SD_SPI_PORT, 0xFF, buff, 512);
                 spi_xfer(0xFF); spi_xfer(0xFF);
@@ -266,6 +141,7 @@ DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count) {
 
     sd_cs_deselect();
     spi_xfer(0xFF);
+
     return count ? RES_ERROR : RES_OK;
 }
 
@@ -274,6 +150,7 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count) {
     if (pdrv != DEV_MMC || !count) return RES_PARERR;
 
     sd_cs_select();
+
     if (count == 1) {
         if (send_cmd(24, sector) == 0) {
             spi_xfer(0xFF); spi_xfer(0xFE);
@@ -301,6 +178,7 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count) {
 
     sd_cs_deselect();
     spi_xfer(0xFF);
+
     return count ? RES_ERROR : RES_OK;
 }
 #endif

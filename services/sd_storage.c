@@ -125,8 +125,9 @@ bool sd_storage_scan_files(const char* dir_path) {
     DIR dir;
     FILINFO fno;
     FRESULT res = f_opendir(&dir, dir_path);
-
+    printf("[SD] f_opendir result: %d\n", res);
     if (res != FR_OK) {
+        printf("[SD] f_opendir error: %d\n", res);
         return false;
     }
 

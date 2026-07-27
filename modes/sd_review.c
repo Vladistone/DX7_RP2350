@@ -6,7 +6,9 @@
 #include <stdio.h>
 #include <string.h>
 #include "hardware/timer.h"   // Для time_us_32()
+
 void draw_text_scaled(uint16_t x, uint16_t y, const char* text, uint16_t color, uint16_t bg_color, int scale);
+#define FF_VOLUMES 1
 
 // Локальный индекс выбранного файла в рамках интерфейса обзора
 static int g_current_index = 0;
@@ -26,7 +28,7 @@ bool sd_review_init(void) {
 
     // 2. Сканируем корень с помощью безопасной функции из sd_storage
         // Попробуй изменить путь на "0:/" или "/"
-    if (!sd_storage_scan_files("/")) {
+    if (!sd_storage_scan_files("0:/")) {
         printf("[SD ERROR] Scan dir failed\n");
         return false;
     }

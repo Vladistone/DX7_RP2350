@@ -20,8 +20,13 @@
 // 3. Логика режимов (modes/)
 #include "modes.h"
 
+bool sd_review_init(void);
+
 // Глобальная переменная текущего активного режима
 AppModeState g_current_mode = MODE_PLAYBACK;
+
+// Флаг, что SD-карта была просканирована
+static bool sd_scanned = false;
 
 // ---------------------------------------------------------------------------
 // Безопасное переключение режимов и полный рендер экрана TFT
@@ -35,15 +40,27 @@ static void switch_to_next_mode(void) {
         case MODE_PLAYBACK:      
             play_mode_render(); 
             break;
+            
         case MODE_FILE_SELECT:   
+            // Сканируем SD только при первом входе в режим
+            if (!sd_scanned) {
+                if (sd_review_init()) {
+                    sd_scanned = true;
+                } else {
+                    printf("[SD] Init failed\n");
+                }
+            }
             sd_review_render(); 
             break;
+            
         case MODE_USB_MIDI:       
             midi_bridge_render(); 
             break;
+            
         case MODE_SYSTEM_CONFIG: 
             system_mode_render(); 
             break;
+            
         default:
             break;
     }
@@ -79,33 +96,26 @@ static void system_init(void) {
     // 4. Инициализация аппаратных драйверов
     tft_init(); 
     ui_set_brightness(50); // Яркость 50% сразу после инициализации TFT
-    printf("[INIT] TFT Display 50%... OK\n");
+    printf("[INIT] TFT Display 50%%... OK\n");
 
     encoder_init(); // Инициализирует GP4, GP5 и GP14 (ENC_PIN_SW)
     printf("[INIT] Encoder & SW (GP14)... OK\n");
     
-    // Инициализация SD
+    // 5. Инициализация SD-карты (только один раз при старте)
     sd_spi_init();
     printf("Init SD...\n");
     if (!sd_storage_init()) {
-        printf("SD mount failed!\n");
+        printf("[WARN] SD Storage Mount Failed!\n");
     } else {
-        printf("SD mount OK.\n");
-    }    
+        printf("[INIT] SD Storage Mounted!\n");
+        sd_storage_load_theme("theme.cfg");
+    }
     printf("[INIT] SD Card SPI... OK\n");
 
-    // 5. Инициализация профилей SysEx и файловой системы
+    // 6. Инициализация профилей SysEx и файловой системы
     sysex_cc_map_init(&map_nucleus2_profile);
 
-    if (sd_storage_init()) {
-        printf("[INIT] SD Storage Mounted!\n");
-        sd_storage_load_theme("theme.cfg"); 
-        //sd_storage_scan_files(".SYX");      
-    } else {
-        printf("[WARN] SD Storage Mount Failed!\n");
-    }
-
-    // 6. Запуск UI Engine
+    // 7. Запуск UI Engine
     ui_engine_init();
 
     // Гасим светодиод инициализации
@@ -119,6 +129,7 @@ static void system_init(void) {
 int main(void) {
     system_init();
     printf("System init done.\n");
+    
     // Первоначальный рендер экрана Playback
     play_mode_render();
 
@@ -132,18 +143,16 @@ int main(void) {
         // -------------------------------------------------------------------
         // А. Опрос энкодера и его кнопки SW (GP14)
         // -------------------------------------------------------------------
-        //printf("Loop tick\n");
         int enc_delta         = encoder_get_delta();
-        bool enc_single_click = encoder_is_button_pressed(); // Одиночное нажатие GP13
-        bool enc_double_click = encoder_is_double_clicked(); // Двойное нажатие GP13
+        bool enc_single_click = encoder_is_button_pressed();
+        bool enc_double_click = encoder_is_double_clicked();
 
         // -------------------------------------------------------------------
         // Б. Чтение системной кнопки GP23 (с защитой от дребезга контактов)
         // -------------------------------------------------------------------
-        bool current_btn_raw = gpio_get(BTN_SYS_MODE); // 0 (LOW) = Нажата
+        bool current_btn_raw = gpio_get(BTN_SYS_MODE);
         bool btn_sys_triggered = false;
 
-        // Если состояние кнопки изменилось и прошло > 50 мс
         if (!current_btn_raw && last_btn_state) {
             if (absolute_time_diff_us(last_btn_time, get_absolute_time()) > 50000) {
                 btn_sys_triggered = true;
@@ -155,7 +164,6 @@ int main(void) {
         // -------------------------------------------------------------------
         // В. Реакция на смену режимов
         // -------------------------------------------------------------------
-        // Смена происходит по нажатию GP23 ИЛИ двойному клику ручки энкодера
         if (btn_sys_triggered || enc_double_click) {
             printf("[EVENT] Mode switch triggered!\n");
             switch_to_next_mode();
@@ -164,9 +172,7 @@ int main(void) {
         // -------------------------------------------------------------------
         // Г. Передача событий в текущий активный режим
         // -------------------------------------------------------------------
-        // Тачпад (0 если пока не используется)
         uint16_t current_touch = 0; 
-        // current_touch = mpr121_read_touched(); 
 
         switch (g_current_mode) {
             case MODE_PLAYBACK:
