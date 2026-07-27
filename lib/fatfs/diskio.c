@@ -50,11 +50,13 @@ static BYTE send_cmd(BYTE cmd, DWORD arg) {
     if (cmd == 8) n = 0x87;
     spi_xfer(n);
 
-    // === ИСПРАВЛЕННЫЙ ЦИКЛ ОЖИДАНИЯ ===
-    n = 5000; 
+    // НАДЁЖНЫЙ ВАРИАНТ ТАЙМАУТА ДЛЯ БЫСТРОГО ЯДРА RP2350
+    n = 2000; // Даем карте до 20 миллисекунд общего времени на ответ
     do {
         res = spi_xfer(0xFF);
-    } while ((res & 0x80) && --n);
+        if (res == 0x01 || res == 0x00) break; // Если пришел валидный ответ R1 — выходим!
+        sleep_us(10); // <--- Физическая микропауза между байтами для 150 МГц чипа
+    } while (--n);
 
     sd_cs_deselect();
     return res;
@@ -71,32 +73,47 @@ DSTATUS disk_initialize(BYTE pdrv) {
 
     if (pdrv != DEV_MMC) return STA_NOINIT;
 
+    // Инициализация аппаратного SPI1
     sd_spi_init();
 
-    sd_cs_deselect();
-    for (int n = 0; n < 10; n++) spi_xfer(0xFF);
+    // Очищаем аппаратный буфер SPI1 от стартового мусора дисплея
+    while (spi_is_readable(SD_SPI_PORT)) {
+        (void)spi_get_hw(SD_SPI_PORT)->dr;
+    }
 
+    // 1. Подаем 80 холостых тактов при выключенном CS
     sd_cs_deselect();
-    for (int n = 0; n < 10; n++) spi_xfer(0xFF);
-    //sd_cs_select(); // <--- УДАЛИТЬ ЭТУ СТРОКУ!
-    // Вызываем команду сразу. Внутри send_cmd линия CS сама опустится в 0 как положено
-    sleep_ms(5); // <--- ДОБАВИТЬ: пауза стабилизации для чипа карты
+    for (int n = 0; n < 15; n++) spi_xfer(0xFF);
+
+    // Пауза стабилизации, чтобы внутренний чип карты "проснулся"
+    sleep_ms(10); 
+
+    // 2. Отправляем CMD0 (Внутри send_cmd CS включится и выключится сам)
     if (send_cmd(0, 0) == 1) { 
-
         ty = 0;
+        
+        // Отправляем CMD8
         if (send_cmd(8, 0x1AA) == 1) {
+            // КРИТИЧНО: Включаем CS вручную, так как send_cmd его уже выключил,
+            // а нам нужно прочитать 4 байта регистра OCR напрямую из шины!
+            sd_cs_select(); 
             for (int n = 0; n < 4; n++) ocr[n] = spi_xfer(0xFF);
+            sd_cs_deselect(); // Выключаем после чтения
+
             if (ocr[2] == 0x01 && ocr[3] == 0xAA) {
                 for (tmr = 1000; tmr; tmr--) {
                     if (send_cmd(0x80 | 41, 0x40000000) == 0) break;
                     sleep_ms(1);
                 }
                 if (tmr && send_cmd(58, 0) == 0) {
+                    sd_cs_select(); // Включаем для чтения OCR
                     for (int n = 0; n < 4; n++) ocr[n] = spi_xfer(0xFF);
-                    ty = (ocr[0] & 0x40) ? 12 : 4;
+                    sd_cs_deselect();
+                    
+                    ty = (ocr[0] & 0x40) ? 12 : 4; // SDv2 (Block) или SDv2 (Byte)
                 }
             }
-        } else {
+        } else { // Старые карты SDv1 или MMC
             ty = (send_cmd(0x80 | 41, 0) <= 1) ? 2 : 1;
             for (tmr = 1000; tmr; tmr--) {
                 if (send_cmd(0x80 | 41, 0) == 0) break;
@@ -108,11 +125,12 @@ DSTATUS disk_initialize(BYTE pdrv) {
     }
 
     sd_cs_deselect();
-    spi_xfer(0xFF);
+    spi_xfer(0xFF); // Холостой такт завершения транзакции
 
     if (ty) {
+        // Карта успешно дала свой тип! Включаем рабочую скорость (2 МГц)
         sd_spi_set_high_speed();
-        return 0;
+        return 0; // RES_OK
     }
 
     return STA_NOINIT;

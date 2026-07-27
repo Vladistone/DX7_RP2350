@@ -11,9 +11,19 @@ void sd_spi_init(void) {
     spi_init(SD_SPI_PORT, 400 * 1000); 
 
     // 2. Настройка аппаратных функций пинов шины SPI1
-    gpio_set_function(SD_SCK_PIN,  GPIO_FUNC_SPI);
-    gpio_set_function(SD_MOSI_PIN, GPIO_FUNC_SPI);
-    gpio_set_function(SD_MISO_PIN, GPIO_FUNC_SPI);
+    // Принудительно мапим пины на шину SPI1, игнорируя дефолтный SPI0:
+    // (Согласно официальному Datasheet RP2350, Function Matrix, для пинов GP8, GP10, GP11
+    // именно Цифра 6 (ALT6) отвечает за жесткую коммутацию с блоком SPI1,
+    // в то время как дефолтный макрос уводит их на функцию SPI0)).
+    
+    // В матрице RP2350 для GP8-11 блок SPI1 вызывается через явное указание или встроенный макрос:
+    // gpio_set_function(SD_SCK_PIN,  GPIO_FUNC_XIP);
+    
+    // Или самый надежный и переносимый вариант для Pico SDK:
+    gpio_set_function(SD_SCK_PIN, 6);  // Функция 6 для GP10 — это строго SPI1 SCK
+    gpio_set_function(SD_MOSI_PIN, 6); // Функция 6 для GP11 — это строго SPI1 TX
+    gpio_set_function(SD_MISO_PIN, 6); // Функция 6 для GP8  — это строго SPI1 RX
+
 
     // КРИТИЧЕСКИ ДЛЯ RP2350: Включаем встроенную подтяжку к 3.3V
     // Это предотвратит зависание буфера FIFO, если линия «молчит»
