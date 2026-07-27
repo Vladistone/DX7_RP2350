@@ -8,7 +8,6 @@
 #include "hardware/timer.h"   // Для time_us_32()
 
 void draw_text_scaled(uint16_t x, uint16_t y, const char* text, uint16_t color, uint16_t bg_color, int scale);
-#define FF_VOLUMES 1
 
 // Локальный индекс выбранного файла в рамках интерфейса обзора
 static int g_current_index = 0;

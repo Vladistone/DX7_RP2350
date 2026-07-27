@@ -24,12 +24,11 @@ static BYTE spi_xfer(BYTE data) {
     return out;
 }
 
-
 static BYTE send_cmd(BYTE cmd, DWORD arg) {
     BYTE res;
     int n;
 
-    if (cmd & 0x80) {
+    if (cmd & 0x80) { 
         cmd &= 0x7F;
         res = send_cmd(55, 0);
         if (res > 1) return res;
@@ -51,13 +50,11 @@ static BYTE send_cmd(BYTE cmd, DWORD arg) {
     if (cmd == 8) n = 0x87;
     spi_xfer(n);
 
-    // ИСПРАВЛЕННЫЙ ВАРИАНТ ТАЙМАУТА ПОД RP2350 (150 MHz)
-    n = 2000; // Даем карте до 20 миллисекунд на физический ответ
+    // === ИСПРАВЛЕННЫЙ ЦИКЛ ОЖИДАНИЯ ===
+    n = 5000; 
     do {
         res = spi_xfer(0xFF);
-        if (!(res & 0x80)) break; // Если старший бит равен 0 — ответ получен!
-        sleep_us(10); // Пауза 10 микросекунд между тактами опроса
-    } while (--n);
+    } while ((res & 0x80) && --n);
 
     sd_cs_deselect();
     return res;
@@ -79,8 +76,13 @@ DSTATUS disk_initialize(BYTE pdrv) {
     sd_cs_deselect();
     for (int n = 0; n < 10; n++) spi_xfer(0xFF);
 
-    sd_cs_select();
-    if (send_cmd(0, 0) == 1) {
+    sd_cs_deselect();
+    for (int n = 0; n < 10; n++) spi_xfer(0xFF);
+    //sd_cs_select(); // <--- УДАЛИТЬ ЭТУ СТРОКУ!
+    // Вызываем команду сразу. Внутри send_cmd линия CS сама опустится в 0 как положено
+    sleep_ms(5); // <--- ДОБАВИТЬ: пауза стабилизации для чипа карты
+    if (send_cmd(0, 0) == 1) { 
+
         ty = 0;
         if (send_cmd(8, 0x1AA) == 1) {
             for (int n = 0; n < 4; n++) ocr[n] = spi_xfer(0xFF);
