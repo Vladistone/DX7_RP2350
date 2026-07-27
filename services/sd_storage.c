@@ -117,6 +117,8 @@ static bool has_extension(const char *filename, const char *ext) {
 
 // Сканирование директории и наполнение списка sd_info
 bool sd_storage_scan_files(const char* dir_path) {
+    printf("[SD] Scanning path: %s\n", dir_path);
+    printf("[SD] is_mounted: %d\n", sd_info.is_mounted);
     sd_info.file_count = 0;
     if (!sd_info.is_mounted) return false;
 
@@ -138,6 +140,7 @@ bool sd_storage_scan_files(const char* dir_path) {
     // 2. Чтение списка файлов и папок
     while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0] != 0) {
         // Пропускаем скрытые и системные файлы
+        printf("[SD] Found item: %s (attrib: %02X)\n", fno.fname, fno.fattrib);
         if (fno.fname[0] == '.' || (fno.fattrib & AM_SYS) || (fno.fattrib & AM_HID)) {
             continue;
         }

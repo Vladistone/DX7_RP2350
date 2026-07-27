@@ -98,9 +98,9 @@ static void system_init(void) {
     sysex_cc_map_init(&map_nucleus2_profile);
 
     if (sd_storage_init()) {
-        printf("[INIT] SD Storage Mounted Successfully!\n");
+        printf("[INIT] SD Storage Mounted!\n");
         sd_storage_load_theme("theme.cfg"); 
-        sd_storage_scan_files(".SYX");      
+        //sd_storage_scan_files(".SYX");      
     } else {
         printf("[WARN] SD Storage Mount Failed!\n");
     }

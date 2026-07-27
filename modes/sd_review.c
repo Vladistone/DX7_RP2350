@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "hardware/timer.h"   // Для time_us_32()
+void draw_text_scaled(uint16_t x, uint16_t y, const char* text, uint16_t color, uint16_t bg_color, int scale);
 
 // Локальный индекс выбранного файла в рамках интерфейса обзора
 static int g_current_index = 0;
@@ -14,6 +15,7 @@ static int g_current_index = 0;
 // Инициализация и сканирование каталога через sd_storage
 // ----------------------------------------------------------------------------
 bool sd_review_init(void) {
+    printf("[SD] sd_review_init called\n");
     g_current_index = 0;
 
     if (!sd_ensure_ready()) { // проверяем мсмонтирован ли диск
@@ -23,18 +25,21 @@ bool sd_review_init(void) {
     printf("[SD] Card mounted before!\n");
 
     // 2. Сканируем корень с помощью безопасной функции из sd_storage
+        // Попробуй изменить путь на "0:/" или "/"
     if (!sd_storage_scan_files("/")) {
         printf("[SD ERROR] Scan dir failed\n");
         return false;
     }
 
     printf("[SD] Scan complete. Found files/folders: %d\n", sd_info.file_count);
-    return true;
+    //return true;
 
     printf("[SD] Found %d items in root\n", sd_info.file_count);
     for (int i = 0; i < sd_info.file_count; i++) {
     printf("  %d: %s\n", i, sd_info.files[i].name);
     }
+
+    return true;
 }
 
 // ----------------------------------------------------------------------------
@@ -116,13 +121,16 @@ void sd_review_update(uint16_t touched, int enc_delta) {
 // ----------------------------------------------------------------------------
 void sd_review_render(void) {
     if (!sd_info.is_mounted) {
-        // Вывести на экран: "NO SD CARD"
+        draw_text_scaled(10, 50, "NO SD CARD", 0xF800, current_theme.bg_color, 2);
         return;
     }
     if (sd_info.file_count == 0) {
-        // Вывести на экран: "NO FILES FOUND"
+        draw_text_scaled(10, 50, "NO FILES FOUND", 0xF800, current_theme.bg_color, 2);
         return;
     }
-
-    // Отрисовка имени файла sd_info.files[g_current_index].name на ваш LCD/OLED
+    // Отобразить список файлов
+    for (int i = 0; i < sd_info.file_count && i < 8; i++) {
+        uint16_t color = (i == g_current_index) ? current_theme.accent_color : current_theme.text_color;
+        draw_text_scaled(10, 60 + i * 24, sd_info.files[i].name, color, current_theme.bg_color, 1);
+    }
 }
