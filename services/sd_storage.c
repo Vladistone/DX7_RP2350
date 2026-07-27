@@ -5,6 +5,7 @@
 #include "ui_engine.h"
 #include "SD_card.h"
 #include "ff.h"
+#include "diskio.h"        // <-- ДОБАВИТЬ
 #include "debug_log.h"
 
 // Глобальная переменная состояния SD
@@ -93,27 +94,34 @@ static bool has_extension(const char *filename, const char *ext) {
 bool sd_storage_mount(void) {
     sd_spi_init(); // Низкоуровневый SPI из core/SD_card.h
 
-    FRESULT res = f_mount(&fs, "", 0); // 0 — зарегистрировать диск без немедленного чтения секторов
-        if (res != FR_OK) {
-            printf("[ERROR] SD Mount registration failed: %d\n", res);
-        } else {
-            printf("[INIT] SD Volume registered (Lazy Mount)\n");
-    }// Используем объявленную выше статику `fs`
-    if (res == FR_OK) {
-        sd_info.is_mounted = true;
-        sd_spi_set_high_speed(); // Перевод SPI на рабочую частоту
-        debug_log_print("SD mounted success.\n");
+    // === КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ===
+    // Принудительно инициализируем карту через драйвер FatFS
+    DSTATUS status = disk_initialize(0);
+    if (status & STA_NOINIT) {
+        printf("[ERROR] SD disk_initialize failed: %d\n", status);
+        return false;
+    }
+    printf("[INIT] SD disk_initialize OK\n");
 
-        // Запускаем автосоздание недостающих конфигураций и папок
-        sd_storage_ensure_defaults();
-
-        return true;
+    // Теперь монтируем
+    FRESULT res = f_mount(&fs, "", 0);
+    if (res != FR_OK) {
+        printf("[ERROR] SD Mount registration failed: %d\n", res);
+        return false;
     }
 
-    sd_info.is_mounted = false;
-    debug_log_print("SD mount failed!\n");
-    return false;
+    printf("[INIT] SD Volume registered (Lazy Mount)\n");
+    sd_info.is_mounted = true;
+    sd_spi_set_high_speed();
+    printf("SD mounted success.\n");
+    sd_storage_ensure_defaults();
+    return true;
 }
+
+//    sd_info.is_mounted = false;
+//    debug_log_print("SD mount failed!\n");
+//    return false;
+//}
 
 // Сканирование директории и наполнение списка sd_info
 bool sd_storage_scan_files(const char* dir_path) {
