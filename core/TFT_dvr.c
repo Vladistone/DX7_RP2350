@@ -94,6 +94,8 @@ void tft_init(void) {
     gpio_set_drive_strength(TFT_DC,   GPIO_DRIVE_STRENGTH_12MA);
     gpio_set_drive_strength(TFT_CS,   GPIO_DRIVE_STRENGTH_12MA);
 
+    tft_backlight_init(); // blacklight
+    
     st7789_init_registers();
     show_animated_splash();
 }

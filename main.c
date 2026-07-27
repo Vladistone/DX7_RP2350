@@ -132,7 +132,7 @@ int main(void) {
         // -------------------------------------------------------------------
         // А. Опрос энкодера и его кнопки SW (GP14)
         // -------------------------------------------------------------------
-        printf("Loop tick\n");
+        //printf("Loop tick\n");
         int enc_delta         = encoder_get_delta();
         bool enc_single_click = encoder_is_button_pressed(); // Одиночное нажатие GP13
         bool enc_double_click = encoder_is_double_clicked(); // Двойное нажатие GP13
