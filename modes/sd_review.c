@@ -16,13 +16,11 @@ static int g_current_index = 0;
 bool sd_review_init(void) {
     g_current_index = 0;
 
-    // 1. Монтируем SD через общий системный модуль
-    if (!sd_storage_mount()) {
+    if (!sd_ensure_ready()) { // проверяем мсмонтирован ли диск
         printf("[SD ERROR] Mount failed\n");
         return false;
     }
-
-    printf("[SD] Card mounted successfully!\n");
+    printf("[SD] Card mounted before!\n");
 
     // 2. Сканируем корень с помощью безопасной функции из sd_storage
     if (!sd_storage_scan_files("/")) {

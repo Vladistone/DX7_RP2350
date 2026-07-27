@@ -87,7 +87,7 @@ static void system_init(void) {
     // Инициализация SD
     sd_spi_init();
     printf("Init SD...\n");
-    if (!sd_storage_mount()) {
+    if (!sd_storage_init()) {
         printf("SD mount failed!\n");
     } else {
         printf("SD mount OK.\n");
@@ -97,7 +97,7 @@ static void system_init(void) {
     // 5. Инициализация профилей SysEx и файловой системы
     sysex_cc_map_init(&map_nucleus2_profile);
 
-    if (sd_storage_mount()) {
+    if (sd_storage_init()) {
         printf("[INIT] SD Storage Mounted Successfully!\n");
         sd_storage_load_theme("theme.cfg"); 
         sd_storage_scan_files(".SYX");      

@@ -13,8 +13,9 @@
 sd_storage_t sd_info = { .is_mounted = false, .file_count = 0 };
 
 static FATFS fs;          // Рабочая область FatFS
-static FATFS g_fatfs;
+//static FATFS g_fatfs;
 static bool g_sd_mounted = false;
+//static bool g_sd_initialized = false;
 static void sd_storage_ensure_defaults(void);
 
 // Возвращает фиксированное время (например, 1 июля 2026 года, 00:00:00)
@@ -34,33 +35,39 @@ DWORD get_fattime(void) {
            ((DWORD)0 >> 1);
 }
 
-// Функция инициализации / повторного монтирования
+// Монтирование накопителя
 bool sd_storage_init(void) {
-    FRESULT res;
-    sleep_ms(100); // Даем карте время после инициализации
+   
+    if (g_sd_mounted) {  // Проверяем глобальную переменную
+        printf("[SD] Already mounted, skipping.\n");
+        return true;
+    }
+
+    printf("[SD] Initializing...\n");
+    sd_spi_init();
 
     DSTATUS status = disk_initialize(0);
     if (status & STA_NOINIT) {
-        printf("SD disk_initialize failed: %d\n", status);
+        printf("[ERROR] SD disk_initialize failed: %d\n", status);
         g_sd_mounted = false;
         return false;
     }
-    printf("SD disk_initialize OK\n");
+    printf("[INIT] SD disk_initialize OK\n");
 
-    for (int retry = 0; retry < 3; retry++) {
-        res = f_mount(&g_fatfs, "", 1);
-        if (res == FR_OK) {
-            g_sd_mounted = true;
-            printf("SD mounted!\n");
-            return true;
-        }
-        printf("SD mount err: %d (retry %d)\n", res, retry);
-        sleep_ms(200); // Увеличил задержку
+    FRESULT res = f_mount(&fs, "", 0);
+    if (res != FR_OK) {
+        printf("[ERROR] SD Mount registration failed: %d\n", res);
+        g_sd_mounted = false;
+        return false;
     }
 
-    g_sd_mounted = false;
-    printf("SD mount failed after retries\n");
-    return false;
+    printf("[INIT] SD Volume registered\n");
+    sd_spi_set_high_speed();
+    sd_info.is_mounted = true;
+    g_sd_mounted = true; // Изменяем глобальную переменную
+    printf("SD mounted success.\n");
+    sd_storage_ensure_defaults();
+    return true;
 }
 
 // Универсальная обертка для обработки ошибок FatFS
@@ -79,10 +86,7 @@ FRESULT sd_safe_operation(FRESULT res) {
 // Пример функции обновления/проверки в фоновом цикле или при попытке доступа
 bool sd_ensure_ready(void) {
     if (!g_sd_mounted) {
-        printf("SD not ready, re-initializing...\n");
-        // Перезапускаем SPI и пробуем смонтировать заново
-        sd_spi_init();
-        sleep_ms(50);
+        printf("[SD] Not mounted, trying to init...\n");
         return sd_storage_init();
     }
     return true;
@@ -102,42 +106,6 @@ static bool has_extension(const char *filename, const char *ext) {
     }
     return (*dot == '\0' && *ext == '\0');
 }
-
-// Монтирование накопителя
-bool sd_storage_mount(void) {
-    printf("[SD] Mount 400kHz start\n");
-    sd_spi_init(); // Низкая скорость 400 кГц
-    printf("[SD] SPI init done\n");
-
-    DSTATUS status = disk_initialize(0);
-    if (status & STA_NOINIT) {
-        printf("[ERROR] SD disk_initialize failed: %d\n", status);
-        return false;
-    }
-    printf("[INIT] SD disk_initialize OK\n");
-
-    // Монтируем НА НИЗКОЙ СКОРОСТИ
-    FRESULT res = f_mount(&fs, "", 0);
-    if (res != FR_OK) {
-        printf("[ERROR] SD Mount registration failed: %d\n", res);
-        return false;
-    }
-
-    printf("[INIT] SD Volume registered (Lazy Mount)\n");
-    
-    // ТОЛЬКО ПОСЛЕ УСПЕШНОГО МОНТИРОВАНИЯ переводим на высокую скорость
-    sd_spi_set_high_speed();
-    
-    sd_info.is_mounted = true;
-    printf("SD mounted success.\n");
-    sd_storage_ensure_defaults();
-    return true;
-}
-
-//    sd_info.is_mounted = false;
-//    debug_log_print("SD mount failed!\n");
-//    return false;
-//}
 
 // Сканирование директории и наполнение списка sd_info
 bool sd_storage_scan_files(const char* dir_path) {

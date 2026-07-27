@@ -32,7 +32,7 @@ typedef struct {
 extern sd_storage_t sd_info;
 
 // Базовые функции управления SD-картой и файлами
-bool sd_storage_mount(void);
+bool sd_storage_init(void);
 bool sd_ensure_ready(void);
 bool sd_storage_load_theme(const char* theme_filename);
 bool sd_storage_scan_files(const char* dir_path);
