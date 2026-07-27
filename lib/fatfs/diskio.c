@@ -4,6 +4,7 @@
 #include "hardware/spi.h"
 #include "hw_config.h"
 #include "sd_card.h" // Для доступа к функциям CS
+#include <stdio.h>
 
 #define DEV_MMC         0
 #define SD_CMD_TIMEOUT  10000
@@ -70,7 +71,7 @@ DSTATUS disk_status(BYTE pdrv) {
 DSTATUS disk_initialize(BYTE pdrv) {
     BYTE ty, ocr[4];
     UINT tmr;
-
+    printf("[SD] disk_initialize start\n");
     if (pdrv != DEV_MMC) return STA_NOINIT;
 
     // Сначала инициализируем SPI на низкой скорости (400 кГц)
@@ -78,52 +79,76 @@ DSTATUS disk_initialize(BYTE pdrv) {
 
     // 1. Подаем 80 холостых тактов SPI (10 байт 0xFF) при выключенном CS
     sd_cs_deselect();
-    for (int n = 0; n < 10; n++) spi_xfer(0xFF);
+    for (int n = 0; n < 10; n++) {
+        spi_xfer(0xFF);
+        sleep_us(10); // Добавляем небольшую задержку между тактами
+    }
 
-    // 2. Опрашиваем карту (Внутри send_cmd CS сам включится и выключится)
-    if (send_cmd(0, 0) == 1) { // Карта перешла в Idle state
-        ty = 0;
-        if (send_cmd(8, 0x1AA) == 1) { // Проверка SDv2 (поддержка больших карт)
-            // Перед чтением регистра OCR нужно активировать CS, так как send_cmd его уже выключил
-            sd_cs_select(); 
-            for (int n = 0; n < 4; n++) ocr[n] = spi_xfer(0xFF);
-            sd_cs_deselect(); // Выключаем после чтения байт
+    // 2. Даем карте время на внутренний сброс
+    sleep_ms(100);
 
-            if (ocr[2] == 0x01 && ocr[3] == 0xAA) {
-                // Инициализация карт высокой емкости (SDHC/SDXC) через ACMD41
-                for (tmr = 1000; tmr; tmr--) {
-                    if (send_cmd(0x80 | 41, 0x40000000) == 0) break;
-                    sleep_ms(1);
+    // 3. Пробуем инициализировать карту с повторами
+    int retry = 0;
+    bool init_ok = false;
+    while (retry < 3 && !init_ok) {
+        sd_cs_deselect();
+        sleep_ms(10);
+        
+        // Отправляем CMD0 сброс
+        sd_cs_select();
+        printf("[SD] CMD0 send\n");
+        if (send_cmd(0, 0) == 1) { // Карта перешла в Idle state
+            printf("[SD] CMD0 OK, entering init\n");
+            ty = 0;
+            if (send_cmd(8, 0x1AA) == 1) {
+                sd_cs_select(); 
+                for (int n = 0; n < 4; n++) ocr[n] = spi_xfer(0xFF);
+                sd_cs_deselect();
+
+                if (ocr[2] == 0x01 && ocr[3] == 0xAA) {
+                    for (tmr = 2000; tmr; tmr--) {
+                        if (send_cmd(0x80 | 41, 0x40000000) == 0) break;
+                        sleep_ms(2);
+                    }
+                    if (tmr && send_cmd(58, 0) == 0) {
+                        sd_cs_select();
+                        for (int n = 0; n < 4; n++) ocr[n] = spi_xfer(0xFF);
+                        sd_cs_deselect();
+                        ty = (ocr[0] & 0x40) ? 12 : 4;
+                        init_ok = true;
+                    }
                 }
-                if (tmr && send_cmd(58, 0) == 0) { // CMD58: Чтение OCR
-                    sd_cs_select(); // Активируем для чтения регистра
-                    for (int n = 0; n < 4; n++) ocr[n] = spi_xfer(0xFF);
-                    sd_cs_deselect(); // Выключаем
-                    
-                    ty = (ocr[0] & 0x40) ? 12 : 4; // SDv2 (Block) или SDv2 (Byte)
+            } else {
+                printf("[SD] CMD0 failed\n");
+                ty = (send_cmd(0x80 | 41, 0) <= 1) ? 2 : 1; 
+                for (tmr = 2000; tmr; tmr--) {
+                    if (send_cmd(0x80 | 41, 0) == 0) break;
+                    if (ty == 1 && send_cmd(1, 0) == 0) break;
+                    sleep_ms(2);
                 }
+                if (!tmr || send_cmd(16, 512) != 0) ty = 0;
+                else init_ok = true;
             }
-        } else { // Старые карты SDv1 или MMC
-            ty = (send_cmd(0x80 | 41, 0) <= 1) ? 2 : 1; 
-            for (tmr = 1000; tmr; tmr--) {
-                if (send_cmd(0x80 | 41, 0) == 0) break;
-                if (ty == 1 && send_cmd(1, 0) == 0) break;
-                sleep_ms(1);
-            }
-            if (!tmr || send_cmd(16, 512) != 0) ty = 0; 
+        }
+        retry++;
+        if (!init_ok) {
+            printf("SD init retry %d\n", retry);
+            sd_cs_deselect();
+            sleep_ms(100);
+            // Перезапускаем SPI перед следующей попыткой
+            sd_spi_init();
         }
     }
-    
-    // Здесь sd_cs_deselect() больше не нужен, так как команды закрыты
-    sd_cs_deselect(); 
-    spi_xfer(0xFF); // Холостой такт
 
-    if (ty) {
-        // Карта успешно инициализирована! Переводим SPI на рабочую скорость (12.5 МГц)
-        sd_spi_set_high_speed();
+    sd_cs_deselect(); 
+    spi_xfer(0xFF);
+
+    if (init_ok) {
+        printf("SD init OK, type: %d\n", ty);
         return 0; // RES_OK
     }
 
+    printf("SD init failed after retries\n");
     return STA_NOINIT;
 }
 

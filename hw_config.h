@@ -11,7 +11,8 @@
 #define TFT_CS     1
 #define TFT_SCLK   2
 #define TFT_MOSI   3
-#define TFT_RST    12
+#define TFT_RST    15
+#define TFT_BLK_PWM 22   // Подсветка через PWM
 
 // 2. Энкодер KY-040 (GPIO)
 #define ENC_PIN_A   4

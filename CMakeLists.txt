@@ -69,6 +69,7 @@ target_link_libraries(DX7_RP2350_upgrade
     hardware_uart
     hardware_gpio
     hardware_adc
+    hardware_pwm
 )
 
 # 4. Включаем вывод stdio

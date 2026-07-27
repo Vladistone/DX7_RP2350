@@ -6,34 +6,27 @@
     // ---------------------------------------------------------------------------
     // Инициализация шины SPI и GPIO пинов для SD-карты
     // ---------------------------------------------------------------------------
-    void sd_spi_init(void) {
-        // 1. Старт периферийного блока SPI1
-        // По спецификации SD-карт инициализация ВСЕГДА должна происходить 
-        // на низкой частоте в диапазоне 100 kHz - 400 kHz!
-        spi_init(SD_SPI_PORT, 400 * 1000); // 400 kHz
+void sd_spi_init(void) {
+    // 1. Старт периферийного блока SPI1 на безопасной частоте 400 кГц
+    spi_init(SD_SPI_PORT, 400 * 1000); 
 
-        // 2. Настройка аппаратных функций пинов шины SPI1 (передаем управление контроллеру SPI)
-        gpio_set_function(SD_SCK_PIN,  GPIO_FUNC_SPI);
-        gpio_set_function(SD_MOSI_PIN, GPIO_FUNC_SPI);
-        gpio_set_function(SD_MISO_PIN, GPIO_FUNC_SPI);
+    // 2. Настройка аппаратных функций пинов шины SPI1
+    gpio_set_function(SD_SCK_PIN,  GPIO_FUNC_SPI);
+    gpio_set_function(SD_MOSI_PIN, GPIO_FUNC_SPI);
+    gpio_set_function(SD_MISO_PIN, GPIO_FUNC_SPI);
 
-        // 3. Настройка пина CS (Chip Select)
-        // ВАЖНО: Пин CS для SD-карт НЕ переводится в GPIO_FUNC_SPI! 
-        // Им управляют вручную как обычным цифровым выходом (GPIO_OUT).
-        gpio_init(SD_CS_PIN);
-        gpio_set_dir(SD_CS_PIN, GPIO_OUT);
-        sd_cs_deselect(); // По умолчанию деактивируем карту (H-level)
+    // КРИТИЧЕСКИ ДЛЯ RP2350: Включаем встроенную подтяжку к 3.3V
+    // Это предотвратит зависание буфера FIFO, если линия «молчит»
+    gpio_pull_up(SD_MISO_PIN);
+    gpio_pull_up(SD_MOSI_PIN);
+    gpio_pull_up(SD_SCK_PIN);
 
-        // === КРИТИЧЕСКОЕ ДОБАВЛЕНИЕ ДЛЯ УСТРАНЕНИЯ ОШИБКИ 3 ===
-        // Подаем 80 пустых тактов (Dummy Clocks) для пробуждения контроллера карты.
-        // CS в это время ОБЯЗАТЕЛЬНО должен быть равен 1 (карта деактивирована).
-        uint8_t dummy = 0xFF;
-        for (int i = 0; i < 10; i++) {
-        spi_write_blocking(SD_SPI_PORT, &dummy, 1);
-        }
-    // Программная пауза, чтобы контроллер карты завершил внутренний сброс
-    sleep_ms(10); 
-    }
+    // 3. Настройка пина CS (Строго как GPIO_OUT)
+    gpio_init(SD_CS_PIN);
+    gpio_set_dir(SD_CS_PIN, GPIO_OUT);
+    sd_cs_deselect(); // По умолчанию деактивируем карту (CS = 1)
+}
+
 
     // ---------------------------------------------------------------------------
     // Вспомогательные функции управления CS и Скоростью

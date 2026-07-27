@@ -17,11 +17,11 @@
 #define TFT_MAX_Y   (OFFSET + TFT_HEIGHT - 1)
 
 // Пины RP2040 / RP2350 (SPI0)
-#define TFT_DC        0
-#define TFT_CS        1
-#define TFT_SCLK      2
-#define TFT_MOSI      3
-#define TFT_RST      12
+//#define TFT_DC        0
+//#define TFT_CS        1
+//#define TFT_SCLK      2
+//#define TFT_MOSI      3
+//#define TFT_RST      15
 
 // Прототипы функций и анимации заставки
 void tft_init(void);

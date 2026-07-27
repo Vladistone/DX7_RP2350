@@ -5,6 +5,7 @@
 #include "ff.h"           // Заголовочный файл библиотеки FatFS
 #include <stdio.h>
 #include <string.h>
+#include "hardware/timer.h"   // Для time_us_32()
 
 // Локальный индекс выбранного файла в рамках интерфейса обзора
 static int g_current_index = 0;
@@ -31,6 +32,11 @@ bool sd_review_init(void) {
 
     printf("[SD] Scan complete. Found files/folders: %d\n", sd_info.file_count);
     return true;
+
+    printf("[SD] Found %d items in root\n", sd_info.file_count);
+    for (int i = 0; i < sd_info.file_count; i++) {
+    printf("  %d: %s\n", i, sd_info.files[i].name);
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -72,10 +78,16 @@ bool sd_review_send_current_file(void) {
 // Логика обновления режима (вызывается из main.c) с обработкой Hot-Swap
 // ----------------------------------------------------------------------------
 void sd_review_update(uint16_t touched, int enc_delta) {
+    // Небольшая задержка для стабилизации после переключения режима
+    static uint32_t last_switch_time = 0;
+    if (time_us_32() - last_switch_time < 500000) { // 500 мс
+        return;
+    }
+    last_switch_time = time_us_32();
+
     // 1. Проверяем безопасность и готовность карты (Hot-swap check)
     if (!sd_ensure_ready()) {
-        // Карта извлечена или не готова — выводим сообщение на экран
-        return; 
+        return;
     }
 
     // Если файлов нет после переподключения — выходим

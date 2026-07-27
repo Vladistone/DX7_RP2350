@@ -5,6 +5,9 @@
 #include <stdbool.h>
 #include "modes.h"
 
+// ui_theme.h
+void ui_set_brightness(uint8_t percent);
+
 // Структура темы оформления (ваш текущий вариант)
 typedef struct {
     uint16_t bg_color;

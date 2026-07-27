@@ -55,6 +55,7 @@ static void switch_to_next_mode(void) {
 static void system_init(void) {
     // 1. Старт stdio (USB CDC)
     stdio_init_all();
+    printf("=== System Start ===\n");
     sleep_ms(1000); 
 
     printf("\n=========================================\n");
@@ -77,12 +78,20 @@ static void system_init(void) {
 
     // 4. Инициализация аппаратных драйверов
     tft_init(); 
-    printf("[INIT] TFT Display... OK\n");
+    ui_set_brightness(50); // Яркость 50% сразу после инициализации TFT
+    printf("[INIT] TFT Display 50%... OK\n");
 
     encoder_init(); // Инициализирует GP4, GP5 и GP14 (ENC_PIN_SW)
     printf("[INIT] Encoder & SW (GP14)... OK\n");
-
+    
+    // Инициализация SD
     sd_spi_init();
+    printf("Init SD...\n");
+    if (!sd_storage_mount()) {
+        printf("SD mount failed!\n");
+    } else {
+        printf("SD mount OK.\n");
+    }    
     printf("[INIT] SD Card SPI... OK\n");
 
     // 5. Инициализация профилей SysEx и файловой системы
@@ -109,7 +118,7 @@ static void system_init(void) {
 // ---------------------------------------------------------------------------
 int main(void) {
     system_init();
-
+    printf("System init done.\n");
     // Первоначальный рендер экрана Playback
     play_mode_render();
 
@@ -118,10 +127,12 @@ int main(void) {
     bool last_btn_state = true; // High по умолчанию из-за Pull-Up
     absolute_time_t last_btn_time = get_absolute_time();
 
+    printf("Entering main loop...\n");
     while (true) {
         // -------------------------------------------------------------------
         // А. Опрос энкодера и его кнопки SW (GP14)
         // -------------------------------------------------------------------
+        printf("Loop tick\n");
         int enc_delta         = encoder_get_delta();
         bool enc_single_click = encoder_is_button_pressed(); // Одиночное нажатие GP13
         bool enc_double_click = encoder_is_double_clicked(); // Двойное нажатие GP13

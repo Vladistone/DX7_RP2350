@@ -1,4 +1,15 @@
 #include "ui_theme.h"
+#include "hw_config.h"    // Для TFT_BL_PIN
+#include "hardware/pwm.h" // Для pwm_set_gpio_level
+
+static uint8_t g_brightness = 50; // Процент яркости (0-100)
+// функция для установки яркости
+void ui_set_brightness(uint8_t percent) {
+    g_brightness = (percent > 100) ? 100 : percent;
+    // Рассчет значения ШИМ для пина подсветки
+    uint16_t pwm_level = (g_brightness * 65535) / 100;
+    pwm_set_gpio_level(TFT_BLK_PWM, pwm_level);
+}
 
 // Массив предустановленных тем для каждого из 4 режимов
 static const UI_Theme mode_themes[MODE_COUNT] = {
