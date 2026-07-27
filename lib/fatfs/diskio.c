@@ -11,9 +11,19 @@
 
 static BYTE spi_xfer(BYTE data) {
     BYTE out;
+    
+    // АППАРАТНАЯ ЗАЩИТА ОТ ЗАВИСАНИЯ SPI ПОД RP2350:
+    // Если буфер FIFO приемника забит мусором из-за наводок при выключенном CS, 
+    // принудительно вычищаем его перед началом новой транзакции.
+    while (spi_is_readable(SD_SPI_PORT)) {
+        (void)spi_get_hw(SD_SPI_PORT)->dr; // читаем регистр данных в пустоту
+    }
+
+    // Теперь блокирующий вызов SDK отработает абсолютно безопасно
     spi_write_read_blocking(SD_SPI_PORT, &data, &out, 1);
     return out;
 }
+
 
 static BYTE send_cmd(BYTE cmd, DWORD arg) {
     BYTE res;
@@ -41,10 +51,13 @@ static BYTE send_cmd(BYTE cmd, DWORD arg) {
     if (cmd == 8) n = 0x87;
     spi_xfer(n);
 
-    n = 10;
+    // ИСПРАВЛЕННЫЙ ВАРИАНТ ТАЙМАУТА ПОД RP2350 (150 MHz)
+    n = 2000; // Даем карте до 20 миллисекунд на физический ответ
     do {
         res = spi_xfer(0xFF);
-    } while ((res & 0x80) && --n);
+        if (!(res & 0x80)) break; // Если старший бит равен 0 — ответ получен!
+        sleep_us(10); // Пауза 10 микросекунд между тактами опроса
+    } while (--n);
 
     sd_cs_deselect();
     return res;
