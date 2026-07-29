@@ -136,9 +136,18 @@ DSTATUS disk_initialize(BYTE pdrv) {
     return STA_NOINIT;
 }
 
-DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count) {
+DRESULT disk_read (
+    BYTE pdrv,    /* Physical drive nmuber (0..) */
+    BYTE *buff,   /* Data buffer to store read data */
+    LBA_t sector, /* Safe sector address */
+    UINT count    /* Sector count (1..128) */
+)
+{
     if (pdrv != DEV_MMC || !count) return RES_PARERR;
-
+    // ВАЖНО ДЛЯ RP2350: Короткая пауза, если контроллер карты 
+    // еще не переварил переключение скорости в sd_spi_set_high_speed
+    sleep_us(5);
+    
     sd_cs_select();
 
     DWORD token;
