@@ -24,6 +24,12 @@ void sd_spi_init(void) {
     gpio_set_function(SD_MOSI_PIN, 6); // Функция 6 для GP11 — это строго SPI1 TX
     gpio_set_function(SD_MISO_PIN, 6); // Функция 6 для GP8  — это строго SPI1 RX
 
+    // === КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ПОД ЖЕЛЕЗО RP2350 ===
+    // Отключаем триггер Шмитта и убираем внутренние утечки тока, 
+    // чтобы вход MISO стал максимально чувствительным к модулю HW-203
+    gpio_set_input_hysteresis_enabled(SD_MISO_PIN, false); // Отключаем Шмитта на приемнике
+    gpio_set_slew_rate(SD_SCK_PIN, GPIO_SLEW_RATE_FAST);    // Разгоняем фронты тактов
+    gpio_set_slew_rate(SD_MOSI_PIN, GPIO_SLEW_RATE_FAST);   // Разгоняем фронты данных
 
     // КРИТИЧЕСКИ ДЛЯ RP2350: Включаем встроенную подтяжку к 3.3V
     // Это предотвратит зависание буфера FIFO, если линия «молчит»
