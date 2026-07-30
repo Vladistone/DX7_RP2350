@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
 #include "hw_config.h"
@@ -27,6 +28,39 @@ AppModeState g_current_mode = MODE_PLAYBACK;
 
 // Флаг, что SD-карта была просканирована
 static bool sd_scanned = false;
+
+// Явное объявление вашей реальной функции из драйвера numpad_dvr.c
+uint16_t mpr121_read_touched( void); 
+
+// ---------------------------------------------------------------------------
+// Вывод красивого стартового баннера с датой и временем сборки
+// ---------------------------------------------------------------------------
+void print_system_banner(void) {
+    char m_name[4];
+    int day, year;
+    // Парсим макрос даты компиляции GCC (например, "Jul 31 2026")
+    sscanf(__DATE__, "%3s %d %d", m_name, &day, &year);
+
+    // Переводим текстовый месяц в цифру
+    int month = 1;
+    const char* months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    for (int i = 0; i < 12; i++) {
+        if (strcmp(m_name, months[i]) == 0) { 
+            month = i + 1; 
+            break; 
+        }
+    }
+
+    // Вырезаем часы и минуты из времени компиляции (например, "23:50:15")
+    int hour, min;
+    sscanf(__TIME__, "%d:%d", &hour, &min);
+
+    printf("\n================================================\n");
+    // Выводим строго в формате ЧЧ:ММ ДД.ММ.ГГ
+    printf("DX7 RP2350 Controller System Start: %02d:%02d %02d.%02d.%02d\n", 
+           hour, min, day, month, year % 100);
+    printf("================================================\n");
+}
 
 // ---------------------------------------------------------------------------
 // Безопасное переключение режимов и полный рендер экрана TFT
@@ -66,6 +100,13 @@ static void switch_to_next_mode(void) {
     }
 }
 
+//void print_system_banner(void) {
+    // Пример логики, если в будущем прикрутите модуль точного времени по I2C:
+    // rtc_time_t t;
+    // rtc_get_time(&t);
+    // printf(" DX7 RP2350 Controller System Start: %02d:%02d %02d.%02d.%02d\n", t.hour, t.min, t.day, t.month, t.year)
+//}
+
 // ---------------------------------------------------------------------------
 // Инициализация всей периферии
 // ---------------------------------------------------------------------------
@@ -74,10 +115,9 @@ static void system_init(void) {
     stdio_init_all();
     printf("=== System Start ===\n");
     sleep_ms(1000); 
-
-    printf("\n=========================================\n");
-    printf("   DX7 RP2350 Controller System Start   \n");
-    printf("=========================================\n");
+    
+    // Вызываем хронометрированный баннер
+    print_system_banner(); 
 
     // 2. Явная настройка штатной кнопки GP23 (из hw_config.h)
     gpio_init(BTN_SYS_MODE);
@@ -108,7 +148,7 @@ static void system_init(void) {
         printf("[WARN] SD Storage Mount Failed!\n");
     } else {
         printf("[INIT] SD Storage Mounted!\n");
-        sd_storage_load_theme("theme.cfg");
+//        sd_storage_load_theme("theme.cfg");
     }
     printf("[INIT] SD Card SPI... OK\n");
 
@@ -146,6 +186,26 @@ int main(void) {
         int enc_delta         = encoder_get_delta();
         bool enc_single_click = encoder_is_button_pressed();
         bool enc_double_click = encoder_is_double_clicked();
+
+        // === РЕЖИМ 1: БРАУЗЕР SD-КАРТЫ (FILE MODE) ===
+        if (g_current_mode == 1) {
+            // 1. Получаем шаг вращения из вашего encoder_dvr.c
+            int enc_delta = encoder_get_delta();
+
+            // 2. Получаем клик кнопки энкодера (GP14) строго по вашему драйверу
+            bool is_pressed = encoder_is_button_pressed();
+
+            // 3. Считываем 12 сенсорных каналов MPR121 по вашему оригинальному методу
+            uint16_t pad_raw = mpr121_read_touched();
+            
+            // Если нажат сенсорный нумпад, мы тоже можем передать это как событие активации
+            if (pad_raw != 0) {
+                is_pressed = true; 
+            }
+
+            // Передаем правильные переменные в логику обновления вашего режима
+            sd_review_update(is_pressed, enc_delta);
+        }
 
         // -------------------------------------------------------------------
         // Б. Чтение системной кнопки GP23 (с защитой от дребезга контактов)

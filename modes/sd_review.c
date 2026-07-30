@@ -84,16 +84,17 @@ bool sd_review_send_current_file(void) {
 // Логика обновления режима (вызывается из main.c) с обработкой Hot-Swap
 // ----------------------------------------------------------------------------
 void sd_review_update(uint16_t touched, int enc_delta) {
-    static uint32_t last_action_time = 0;
+    static uint32_t last_enc_time = 0;
+    static bool last_pressed_state = false; // Для отслеживания фронта нажатия кнопки
     uint32_t current_time = time_us_32();
 
-    // Неблокирующий дебаунс на 150 мс для стабильного шага энкодера
-    if (current_time - last_action_time < 150000) return;
+    // 1. ОТДЕЛЬНЫЙ ДЕБАУНС ДЛЯ ВРАЩЕНИЯ ЭНКОДЕРА
+    bool enc_moved = false;
+    if (enc_delta != 0 && (current_time - last_enc_time >= 150000)) {
+        last_enc_time = current_time;
+        enc_moved = true;
 
-    if (enc_delta != 0 || touched) {
-        last_action_time = current_time;
-
-        if (sd_info.file_count > 0 && enc_delta != 0) {
+        if (sd_info.file_count > 0) {
             g_current_index += enc_delta;
             
             // Круговое зацикливание списка файлов
@@ -104,11 +105,51 @@ void sd_review_update(uint16_t touched, int enc_delta) {
                 g_current_index = 0;
             }
         }
+    }
 
-        if (touched) {
-            sd_review_send_current_file();
+    // 2. ОТДЕЛЬНАЯ ОБРАБОТКА НАЖАТИЯ (По фронту: нажали и отпустили)
+    //touched может прийти как true от кнопки или как битовая маска от MPR121
+    bool is_currently_pressed = (touched != 0);
+    bool click_triggered = false;
+
+    if (is_currently_pressed && !last_pressed_state) {
+        // Клик зафиксирован строго в момент нажатия!
+        click_triggered = true; 
+    }
+    last_pressed_state = is_currently_pressed; // Запоминаем состояние для следующего цикла
+
+    // 3. ЛОГИКА ДЕЙСТВИЯ ПРИ КЛИКЕ
+    if (click_triggered && sd_info.file_count > 0) {
+        uint16_t idx = g_current_index;
+
+        // Если выбрана ПАПКУ или пункт ".. [UP]"
+        if (sd_info.files[idx].type == FILE_TYPE_FOLDER) {
+            
+            if (strcmp(sd_info.files[idx].name, ".. [UP]") == 0) {
+                printf("[SD] Going UP to root directory\n");
+                sd_storage_scan_files("/"); 
+            } 
+            else {
+                printf("[SD] Entering directory: %s\n", sd_info.files[idx].name);
+                
+                char next_path[64]; 
+                snprintf(next_path, sizeof(next_path), "/%s", sd_info.files[idx].name);
+                
+                sd_storage_scan_files(next_path); 
+            }
+            g_current_index = 0; // Сброс стрелки на начало в новой папке
+        } 
+        // Если выбран обычный файл
+        else {
+            printf("[SD] Loading Sysex patch file: %s\n", sd_info.files[idx].name);
+            sd_review_send_current_file(); 
         }
-
+        
+        // Принудительный рендер после клика
+        sd_review_render();
+    }
+    // Если просто повернули энкодер — тоже обновляем экран
+    else if (enc_moved) {
         sd_review_render();
     }
 }
