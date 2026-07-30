@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include "ui_theme.h"
 
-#define SD_MAX_FILES        64
+#define SD_MAX_FILES        32 // но рассчитывали на 128 (это около 4kB)
 #define SD_MAX_FILENAME_LEN 32
 
 // Типы элементов для цветового кодирования на TFT LCD

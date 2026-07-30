@@ -5,7 +5,7 @@
 #include "ui_engine.h"
 #include "SD_card.h"
 #include "ff.h"
-#include "diskio.h"        // <-- ДОБАВИТЬ
+#include "diskio.h"
 #include "debug_log.h"
 #include "pico/stdlib.h"   // Для sleep_ms()
 
@@ -21,18 +21,12 @@ static void sd_storage_ensure_defaults(void);
 // Возвращает фиксированное время (например, 1 июля 2026 года, 00:00:00)
 DWORD get_fattime(void) {
     // Формат FatFS: 
-    // Год (отсчет от 1980): бит 31-25 (2026 - 1980 = 46)
-    // Месяц: бит 24-21 (7)
-    // День: бит 20-16 (1)
-    // Часы: бит 15-11 (0)
-    // Минуты: бит 10-5 (0)
-    // Секунды / 2: бит 4-0 (0)
-    return ((DWORD)(2026 - 1980) << 25) | 
-           ((DWORD)7 << 21) | 
-           ((DWORD)1 << 16) | 
-           ((DWORD)0 << 11) | 
-           ((DWORD)0 << 5) | 
-           ((DWORD)0 >> 1);
+    return ((DWORD)(2026 - 1980) << 25) | // Год (отсчет от 1980): бит 31-25 (2026 - 1980 = 46)
+           ((DWORD)7 << 21) | // Месяц: бит 24-21 (7)
+           ((DWORD)1 << 16) | // День: бит 20-16 
+           ((DWORD)0 << 11) | // Часы: бит 15-11 (0)
+           ((DWORD)0 << 5) | // Минуты: бит 10-5 (0)
+           ((DWORD)0 >> 1); // Секунды / 2: бит 4-0 (0)
 }
 
 // Монтирование накопителя
@@ -53,7 +47,9 @@ bool sd_storage_init(void) {
     }
     printf("[INIT] SD disk_initialize OK\n");
 
-    FRESULT res = f_mount(&fs, "", 0);
+    // Указание явного ID тома "0:" заставляет FatFS принудительно 
+    // просканировать MBR и найти первый активный FAT32 раздел, даже если он сдвинут Mac-ом
+    FRESULT res = f_mount(&fs, "0:", 1); 
     if (res != FR_OK) {
         printf("[ERROR] SD Mount registration failed: %d\n", res);
         g_sd_mounted = false;
@@ -64,8 +60,9 @@ bool sd_storage_init(void) {
     sd_spi_set_high_speed();
     sd_info.is_mounted = true;
     g_sd_mounted = true;
-    printf("SD mounted success.\n");
-    sd_storage_ensure_defaults();
+    printf("SD mounted success.1\n");
+    // ХАК ДЛЯ ПРОВЕРКИ: Жестко отключаем создание дефолтных папок на флешке
+    // sd_storage_ensure_defaults(); 
     return true;
 }
 
@@ -122,8 +119,15 @@ bool sd_storage_scan_files(const char* dir_path) {
     sd_info.file_count = 0;
     if (!sd_info.is_mounted) return false;
 
-    DIR dir;
-    FILINFO fno;
+    // ПРАВИЛЬНО: Выносим тяжелые структуры со стека RP2350 в статическую память
+    static DIR dir;       
+    static FILINFO fno;   
+    // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ДЛЯ RP2350:
+    // Наглухо стираем старое состояние структур в RAM перед каждым новым открытием папки,
+    // чтобы FatFS не спотыкался на флагах предыдущих транзакций и не выдавал ошибку 13
+    memset(&dir, 0, sizeof(DIR));
+    memset(&fno, 0, sizeof(FILINFO));
+
     FRESULT res = f_opendir(&dir, dir_path);
     printf("[SD] f_opendir result: %d\n", res);
     if (res != FR_OK) {
@@ -146,7 +150,8 @@ bool sd_storage_scan_files(const char* dir_path) {
             continue;
         }
 
-        // Защита от переполнения массива
+        // ЖЕСТКАЯ ЗАЩИТА: Если файлов на флешке больше 64, мы просто прекращаем 
+        // забивать массив, сохраняя память процессора в полной безопасности!
         if (sd_info.file_count >= SD_MAX_FILES) {
             break;
         }

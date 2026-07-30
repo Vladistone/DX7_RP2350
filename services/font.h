@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-extern const uint8_t font_8x12[59][12];
+extern const uint8_t font_8x12[95][12];
 extern const uint16_t icon_folder[12];
 extern const uint16_t icon_midi[16];
 extern const uint16_t icon_play[12];
