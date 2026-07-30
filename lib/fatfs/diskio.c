@@ -1,15 +1,15 @@
-#include <stdio.h>
-#include "pico/stdlib.h"
-#include "hardware/spi.h"
 #include "ff.h"
 #include "diskio.h"
+#include "SD_card.h"
+#include "hardware/spi.h"
+#include "pico/stdlib.h"
 #include "hw_config.h"
-#include "sd_card.h"
-
+#include <stdio.h>
+    
 #define DEV_MMC         0
 #define SD_CMD_TIMEOUT  10000
 
-static BYTE CardType;
+static BYTE CardType = 0;
 static BYTE spi_xfer(BYTE data) {
     BYTE out;
     
@@ -137,114 +137,129 @@ DSTATUS disk_initialize(BYTE pdrv) {
     return STA_NOINIT;
 }
 
+// ----------------------------------------------------------------------------
+// Универсальное чтение секторов (Автоматически поддерживает SDSC и SDHC)
+// ----------------------------------------------------------------------------
 DRESULT disk_read (
-    BYTE pdrv,    /* Physical drive nmuber (0..) */
+    BYTE pdrv,    /* Physical drive number (0) */
     BYTE *buff,   /* Data buffer to store read data */
-    LBA_t sector, /* Safe sector address */
-    UINT count    /* Sector count (1..128) */
+    LBA_t sector, /* Sector address */
+    UINT count    /* Sector count */
 )
 {
     if (pdrv != DEV_MMC || !count) return RES_PARERR;
-    // ВАЖНО ДЛЯ RP2350: Короткая пауза, если контроллер карты 
-    // еще не переварил переключение скорости в sd_spi_set_high_speed
-    sleep_us(5);
-    // Если карта старого типа (Byte addressing), умножаем сектор на 512
-    // В вашем disk_initialize тип карты записывается в локальную 'ty', 
-    // но если вы перенесете её в глобальную static BYTE CardType, код ниже оживет:
-    
-    // Автоматический расчет адреса: для SDHC - блоки, для SDSC - байты
-    DWORD s_addr = (CardType & 4) ? sector : (sector << 9); 
-    DWORD token;
+    sleep_us(5); // Короткая пауза для стабилизации таймингов RP2350
+
     if (count == 1) {
-        // Чтение одиночного сектора (Используем s_addr!)
+        // Автовыбор адресации: если установлен бит CT_BLOCK (0x08) - шлем sector, иначе байты (sector << 9)
+        DWORD s_addr = (CardType & 0x08) ? sector : (sector << 9);
+
         if (send_cmd(17, s_addr) == 0) {
-            sd_cs_select(); // Возвращаем CS после send_cmd
+            sd_cs_select(); // Восстанавливаем CS=0, так как send_cmd его принудительно выключил
             
+            DWORD token;
             uint32_t timeout = SD_CMD_TIMEOUT;
             do {
                 token = spi_xfer(0xFF);
             } while (token == 0xFF && --timeout);
 
             if (token == 0xFE) {
-                spi_read_blocking(SD_SPI_PORT, 0xFF, buff, 512);
-                spi_xfer(0xFF); spi_xfer(0xFF);
+                // Побайтовое чтение — самое надежное решение против зависаний FIFO буфера RP2350
+                for (int i = 0; i < 512; i++) {
+                    buff[i] = spi_xfer(0xFF);
+                }
+                spi_xfer(0xFF); spi_xfer(0xFF); // Пропускаем 2 байта CRC16
                 count = 0;
             }
         }
     } else {
-        // Множественное чтение блоков (Используем s_addr!)
+        DWORD s_addr = (CardType & 0x08) ? sector : (sector << 9);
+
         if (send_cmd(18, s_addr) == 0) {
-            sd_cs_select(); // Возвращаем CS после send_cmd
+            sd_cs_select(); // Восстанавливаем CS=0
             
             do {
+                DWORD token;
                 uint32_t timeout = SD_CMD_TIMEOUT;
                 do {
                     token = spi_xfer(0xFF);
                 } while (token == 0xFF && --timeout);
 
                 if (token != 0xFE) break;
-                spi_read_blocking(SD_SPI_PORT, 0xFF, buff, 512);
-                spi_xfer(0xFF); spi_xfer(0xFF);
+                
+                for (int i = 0; i < 512; i++) {
+                    buff[i] = spi_xfer(0xFF);
+                }
+                spi_xfer(0xFF); spi_xfer(0xFF); // Пропускаем CRC16
                 buff += 512;
             } while (--count);
             
-            send_cmd(12, 0); // CMD12 остановит передачу
+            send_cmd(12, 0); // CMD12 остановит трансляцию множественного чтения
         }
     }
 
-    sd_cs_deselect();
-    spi_xfer(0xFF);
+    sd_cs_deselect(); // Освобождаем шину SPI
+    spi_xfer(0xFF);   // Даем 8 пустых тактов для завершения работы контроллера карты
 
     return count ? RES_ERROR : RES_OK;
 }
 
+// ----------------------------------------------------------------------------
+// Универсальная запись секторов (Автоматически поддерживает SDSC и SDHC)
+// ----------------------------------------------------------------------------
 #if FF_FS_READONLY == 0
-
-DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count) {
+DRESULT disk_write (
+    BYTE pdrv,          /* Physical drive number (0) */
+    const BYTE *buff,   /* Data to be written */
+    LBA_t sector,       /* Sector address */
+    UINT count          /* Sector count */
+)
+{
     if (pdrv != DEV_MMC || !count) return RES_PARERR;
 
-    // Вычисляем адрес строго на основе глобального бита типа карты
-    DWORD s_addr = (CardType & 4) ? sector : (sector << 9); 
-
     if (count == 1) {
-        // Одиночная запись сектора (CMD24)
+        DWORD s_addr = (CardType & 0x08) ? sector : (sector << 9);
+
         if (send_cmd(24, s_addr) == 0) {
-            sd_cs_select(); // Восстанавливаем CS после авто-деселекта из send_cmd
+            sd_cs_select(); // Восстанавливаем CS=0 после авто-деселекта из send_cmd
             
-            spi_xfer(0xFF); spi_xfer(0xFE); // Стартовый токен данных (0xFE)
-            spi_write_blocking(SD_SPI_PORT, buff, 512);
-            spi_xfer(0xFF); spi_xfer(0xFF); // CRC
+            spi_xfer(0xFF); spi_xfer(0xFE); // Стартовый токен одиночной записи (0xFE)
+            for (int i = 0; i < 512; i++) {
+                spi_xfer(buff[i]);
+            }
+            spi_xfer(0xFF); spi_xfer(0xFF); // Фиктивные 2 байта CRC16
             
             if ((spi_xfer(0xFF) & 0x1F) == 0x05) {
-                while (spi_xfer(0xFF) == 0); // Ждем пока BUSY спадет
+                while (spi_xfer(0xFF) == 0); // Ждем окончания внутренней записи (BUSY)
                 count = 0;
             }
         }
     } else {
-        // Множественная запись секторов (CMD25) - передаем s_addr!
+        DWORD s_addr = (CardType & 0x08) ? sector : (sector << 9);
+
         if (send_cmd(25, s_addr) == 0) {
-            sd_cs_select(); // Восстанавливаем CS
+            sd_cs_select(); // Восстанавливаем CS=0
             
             do {
-                spi_xfer(0xFF); spi_xfer(0xFC); // Токен начала блока (0xFC)
-                spi_write_blocking(SD_SPI_PORT, buff, 512);
-                spi_xfer(0xFF); spi_xfer(0xFF); // CRC
+                spi_xfer(0xFF); spi_xfer(0xFC); // Токен начала блока множественной записи (0xFC)
+                for (int i = 0; i < 512; i++) {
+                    spi_xfer(buff[i]);
+                }
+                spi_xfer(0xFF); spi_xfer(0xFF); // CRC16
                 
                 if ((spi_xfer(0xFF) & 0x1F) != 0x05) break;
-                while (spi_xfer(0xFF) == 0); // Ждем готовности
+                while (spi_xfer(0xFF) == 0); // Ждем готовности карты к следующему блоку
                 buff += 512;
             } while (--count);
             
-            // КРИТИЧНО ДЛЯ СИНХРОНИЗАЦИИ: даем карте один такт перед командой Stop Tran
-            spi_xfer(0xFF); 
-            spi_xfer(0xFD); // Отправляем токен Stop Tran
-            
-            while (spi_xfer(0xFF) == 0); // Ждем пока карта окончательно запишет всё на флеш
+            spi_xfer(0xFF); // Синхро-такт перед командой останова
+            spi_xfer(0xFD); // Токен Stop Tran (0xFD)
+            while (spi_xfer(0xFF) == 0); // Финальное ожидание завершения записи на флеш
         }
     }
     
-    sd_cs_deselect(); // Полностью освобождаем шину SPI
-    spi_xfer(0xFF);   // Финальный синхро-такт
+    sd_cs_deselect(); // Освобождаем шину SPI
+    spi_xfer(0xFF);   // Синхро-такт
 
     return count ? RES_ERROR : RES_OK;
 }
