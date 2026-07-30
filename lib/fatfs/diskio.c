@@ -147,8 +147,6 @@ DRESULT disk_read (
     // ВАЖНО ДЛЯ RP2350: Короткая пауза, если контроллер карты 
     // еще не переварил переключение скорости в sd_spi_set_high_speed
     sleep_us(5);
-    
-    sd_cs_select();
 
     DWORD token;
     if (count == 1) {
@@ -180,8 +178,7 @@ DRESULT disk_read (
             send_cmd(12, 0);
         }
     }
-
-    sd_cs_deselect();
+    sd_cs_select();
     spi_xfer(0xFF);
 
     return count ? RES_ERROR : RES_OK;
@@ -217,8 +214,7 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count) {
             while (spi_xfer(0xFF) == 0);
         }
     }
-
-    sd_cs_deselect();
+    sd_cs_select();
     spi_xfer(0xFF);
 
     return count ? RES_ERROR : RES_OK;
