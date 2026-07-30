@@ -82,7 +82,7 @@ DSTATUS disk_initialize(BYTE pdrv) {
         (void)spi_get_hw(SD_SPI_PORT)->dr;
     }
 
-    // 1. Подаем 80 холостых тактов при выключенном CS
+    // 1. Подаем холостые такты при выключенном CS
     sd_cs_deselect();
     for (int n = 0; n < 15; n++) spi_xfer(0xFF);
 
@@ -92,7 +92,6 @@ DSTATUS disk_initialize(BYTE pdrv) {
     // 2. Отправляем CMD0 (Внутри send_cmd CS включится и выключится сам)
     if (send_cmd(0, 0) == 1) { 
         ty = 0;
-        
         // Отправляем CMD8
         if (send_cmd(8, 0x1AA) == 1) {
             // КРИТИЧНО: Включаем CS вручную, так как send_cmd его уже выключил,
@@ -115,11 +114,18 @@ DSTATUS disk_initialize(BYTE pdrv) {
                 }
             }
         } else { // Старые карты SDv1 или MMC
-            ty = (send_cmd(0x80 | 41, 0) <= 1) ? 2 : 1;
-            for (tmr = 1000; tmr; tmr--) {
-                if (send_cmd(0x80 | 41, 0) == 0) break;
-                if (ty == 1 && send_cmd(1, 0) == 0) break;
-                sleep_ms(1);
+            if (send_cmd(0x80 | 41, 0) <= 1) {
+                ty = 2;
+                for (tmr = 1000; tmr; tmr--) {
+                    if (send_cmd(0x80 | 41, 0) == 0) break;
+                    sleep_ms(1);
+                }
+            } else {
+                ty = 1;
+                for (tmr = 1000; tmr; tmr--) {
+                    if (send_cmd(1, 0) == 0) break;
+                    sleep_ms(1);
+                }
             }
             if (!tmr || send_cmd(16, 512) != 0) ty = 0;
         }
@@ -127,6 +133,9 @@ DSTATUS disk_initialize(BYTE pdrv) {
 
     sd_cs_deselect();
     spi_xfer(0xFF); // Холостой такт завершения транзакции
+
+    // КРИТИЧЕСКИ ВАЖНО: сохраняем вычисленный тип карты в глобальную переменную!
+    CardType = ty; 
 
     if (ty) {
         // Карта успешно дала свой тип! Включаем рабочую скорость (2 МГц)
@@ -230,7 +239,10 @@ DRESULT disk_write (
             spi_xfer(0xFF); spi_xfer(0xFF); // Фиктивные 2 байта CRC16
             
             if ((spi_xfer(0xFF) & 0x1F) == 0x05) {
-                while (spi_xfer(0xFF) == 0); // Ждем окончания внутренней записи (BUSY)
+                // Даем карте физическое время на запись, не насилуя шину тактами
+                while (spi_xfer(0xFF) == 0) {
+                    sleep_us(50); // <--- КРИТИЧНО ДЛЯ RP2350: микропауза 50 мкс
+                }
                 count = 0;
             }
         }
@@ -248,13 +260,17 @@ DRESULT disk_write (
                 spi_xfer(0xFF); spi_xfer(0xFF); // CRC16
                 
                 if ((spi_xfer(0xFF) & 0x1F) != 0x05) break;
-                while (spi_xfer(0xFF) == 0); // Ждем готовности карты к следующему блоку
+                while (spi_xfer(0xFF) == 0) {  // Ждем готовности карты к следующему блоку
+                    sleep_us(50); // <--- КРИТИЧНО ДЛЯ RP2350: микропауза 50 мкс
+                }
                 buff += 512;
             } while (--count);
             
             spi_xfer(0xFF); // Синхро-такт перед командой останова
             spi_xfer(0xFD); // Токен Stop Tran (0xFD)
-            while (spi_xfer(0xFF) == 0); // Финальное ожидание завершения записи на флеш
+            while (spi_xfer(0xFF) == 0) { // Финальное ожидание завершения записи на флеш
+                sleep_us(50); // <--- КРИТИЧНО ДЛЯ RP2350: микропауза 50 мкс
+            }
         }
     }
     
