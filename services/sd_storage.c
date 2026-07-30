@@ -144,36 +144,73 @@ bool sd_storage_scan_files(const char* dir_path) {
 
     // 2. Чтение списка файлов и папок
     while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0] != 0) {
-        // Пропускаем скрытые и системные файлы
-        printf("[SD] Found item: %s (attrib: %02X)\n", fno.fname, fno.fattrib);
-        if (fno.fname[0] == '.' || (fno.fattrib & AM_SYS) || (fno.fattrib & AM_HID)) {
-            continue;
+        
+        // Фильтруем скрытый мусор БЕЗ использования опасного continue;
+        if (fno.fname[0] != '.' && !(fno.fattrib & AM_SYS) && !(fno.fattrib & AM_HID)) {
+            
+            //printf("[SD] Found item: %s (attrib: %02X)\n", fno.fname, fno.fattrib);
+
+            // Защита от переполнения массива
+            if (sd_info.file_count >= SD_MAX_FILES) {
+                break;
+            }
+
+            uint16_t idx = sd_info.file_count;
+            snprintf(sd_info.files[idx].name, SD_MAX_FILENAME_LEN, "%s", fno.fname);
+
+            // Определение типа для индикации
+            if (fno.fattrib & AM_DIR) {
+                sd_info.files[idx].type = FILE_TYPE_FOLDER;
+            } 
+            else if (has_extension(fno.fname, ".syx") || has_extension(fno.fname, ".mid")) {
+                sd_info.files[idx].type = FILE_TYPE_MIDI_SYSEX;
+            } 
+            else {
+                sd_info.files[idx].type = FILE_TYPE_OTHER;
+            }
+
+            sd_info.file_count++;
         }
-
-        // ЖЕСТКАЯ ЗАЩИТА: Если файлов на флешке больше 64, мы просто прекращаем 
-        // забивать массив, сохраняя память процессора в полной безопасности!
-        if (sd_info.file_count >= SD_MAX_FILES) {
-            break;
-        }
-
-        uint16_t idx = sd_info.file_count;
-        snprintf(sd_info.files[idx].name, SD_MAX_FILENAME_LEN, "%s", fno.fname);
-
-        // Определение типа для цветовой индикации
-        if (fno.fattrib & AM_DIR) {
-            sd_info.files[idx].type = FILE_TYPE_FOLDER;
-        } 
-        else if (has_extension(fno.fname, ".syx") || has_extension(fno.fname, ".mid")) {
-            sd_info.files[idx].type = FILE_TYPE_MIDI_SYSEX;
-        } 
-        else {
-            sd_info.files[idx].type = FILE_TYPE_OTHER;
-        }
-
-        sd_info.file_count++;
+        
+        asm volatile("nop"); // Аппаратная микропауза для кэша RAM RP2350
     }
 
-    f_closedir(&dir);
+    // ========================================================================
+    // === УМНАЯ СОРТИРОВКА: СНАЧАЛА ПАПКИ, ЗАТЕМ ФАЙЛЫ (ОТ А ДО Z) ===
+    // ========================================================================
+    // Если на нулевом индексе стоит ".. [UP]", начинаем сортировку с 1, иначе с 0
+    int start_sort_idx = (sd_info.file_count > 0 && strcmp(sd_info.files[0].name, ".. [UP]") == 0) ? 1 : 0;
+    
+    for (int i = start_sort_idx; i < sd_info.file_count - 1; i++) {
+        for (int j = i + 1; j < sd_info.file_count; j++) {
+            bool swap = false;
+            
+            // Логика 1: Если типы разные (один папка, другой файл)
+            if (sd_info.files[i].type == FILE_TYPE_FOLDER && sd_info.files[j].type != FILE_TYPE_FOLDER) {
+                // Текущий уже папка, а следующий файл — менять местами НЕ нужно
+                swap = false;
+            }
+            else if (sd_info.files[i].type != FILE_TYPE_FOLDER && sd_info.files[j].type == FILE_TYPE_FOLDER) {
+                // Текущий файл, а следующий папка — принудительно двигаем папку наверх!
+                swap = true;
+            }
+            // Логика 2: Если типы одинаковые — сортируем строго по алфавиту
+            else {
+                if (strcasecmp(sd_info.files[i].name, sd_info.files[j].name) > 0) {
+                    swap = true;
+                }
+            }
+
+            // Делаем перестановку структур в памяти
+            if (swap) {
+                sd_file_entry_t temp = sd_info.files[i];
+                sd_info.files[i] = sd_info.files[j];
+                sd_info.files[j] = temp;
+            }
+        }
+    }
+
+    f_closedir(&dir); // Наш существующий конец функции
     return true;
 }
 

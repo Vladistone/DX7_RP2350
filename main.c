@@ -181,30 +181,20 @@ int main(void) {
     printf("Entering main loop...\n");
     while (true) {
         // -------------------------------------------------------------------
-        // А. Опрос энкодера и его кнопки SW (GP14)
+        // А. Монолитный опрос всей физической периферии (РАБОТАЕТ ВСЕГДА)
         // -------------------------------------------------------------------
         int enc_delta         = encoder_get_delta();
         bool enc_single_click = encoder_is_button_pressed();
         bool enc_double_click = encoder_is_double_clicked();
 
-        // === РЕЖИМ 1: БРАУЗЕР SD-КАРТЫ (FILE MODE) ===
-        if (g_current_mode == 1) {
-            // 1. Получаем шаг вращения из вашего encoder_dvr.c
-            int enc_delta = encoder_get_delta();
+        // Читаем 12 каналов сенсорного нумпада MPR121
+        uint16_t pad_raw      = mpr121_read_touched();
 
-            // 2. Получаем клик кнопки энкодера (GP14) строго по вашему драйверу
-            bool is_pressed = encoder_is_button_pressed();
-
-            // 3. Считываем 12 сенсорных каналов MPR121 по вашему оригинальному методу
-            uint16_t pad_raw = mpr121_read_touched();
-            
-            // Если нажат сенсорный нумпад, мы тоже можем передать это как событие активации
-            if (pad_raw != 0) {
-                is_pressed = true; 
-            }
-
-            // Передаем правильные переменные в логику обновления вашего режима
-            sd_review_update(is_pressed, enc_delta);
+        // Склеиваем события активации для режима меню (клики и тачи)
+        // Объединяем физику: если нажат нумпад или кликнул энкодер — это touched!
+        uint16_t current_touch = pad_raw; 
+        if (enc_single_click) {
+            current_touch |= 0XFFFF; // Взводим биты, если была нажата механика
         }
 
         // -------------------------------------------------------------------
@@ -222,26 +212,35 @@ int main(void) {
         last_btn_state = current_btn_raw;
 
         // -------------------------------------------------------------------
-        // В. Реакция на смену режимов
+        // В. Реакция на смену режимов (по кнопке или дабл-клику)
         // -------------------------------------------------------------------
         if (btn_sys_triggered || enc_double_click) {
             printf("[EVENT] Mode switch triggered!\n");
             switch_to_next_mode();
+            
+            // Если переключились на режим SD-карты, принудительно инициализируем том
+            if (g_current_mode == MODE_FILE_SELECT) {
+                sd_review_init();
+            }
         }
 
         // -------------------------------------------------------------------
-        // Г. Передача событий в текущий активный режим
+        // Г. Передача событий в текущий активный режим через эффективный SWITCH
         // -------------------------------------------------------------------
-        uint16_t current_touch = 0; 
-
         switch (g_current_mode) {
             case MODE_PLAYBACK:
+                // Передаем реальные клики и шаги в режим синтезатора
                 play_mode_update(current_touch, enc_delta);
                 break;
 
             case MODE_FILE_SELECT:
+                // Если нумпад выдает мусор на шине, сбрасываем его, оставляя только механику
+                if (pad_raw == 0xFFFF) {
+                    pad_raw = 0;
+                }
                 sd_review_update(current_touch, enc_delta);
                 break;
+
 
             case MODE_USB_MIDI:
                 midi_bridge_update(current_touch, enc_delta);
@@ -259,7 +258,7 @@ int main(void) {
 
         last_touch = current_touch;
 
-        // Короткая задержка для стабильности цикла
+        // Короткая задержка для стабильности цикла, опроса I2C и SPI
         sleep_ms(5);
     }
 

@@ -113,7 +113,7 @@
 */
 
 
-#define FF_USE_LFN		1   // 0 -> 1 (static buffer)
+#define FF_USE_LFN		2   // <--- ИСПРАВЛЕНО НА 2. Теперь FatFS сама выделит буфер в RAM стека!
 #define FF_MAX_LFN		255
 /* The FF_USE_LFN switches the support for LFN (long file name).
 /
@@ -153,7 +153,7 @@
 /  on character encoding. When LFN is not enabled, these options have no effect. */
 
 
-#define FF_FS_RPATH		0
+#define FF_FS_RPATH		1
 /* This option configures support for relative path feature.
 /
 /   0: Disable relative path and remove related API functions.

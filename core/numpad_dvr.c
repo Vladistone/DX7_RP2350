@@ -27,12 +27,24 @@ void mpr121_init(void) {
     i2c_write_blocking(I2C_PORT, MPR121_ADDR, run_cmd, 2, false);
 }
 
-uint16_t mpr121_read_touched(void) {
+uint16_t mpr121_read_touched( void) {
     uint8_t reg = 0x00;
-    uint8_t data[2] = {0};
+    uint8_t data[ 2] = { 0};
     
-    i2c_write_blocking(I2C_PORT, MPR121_ADDR, &reg, 1, true);
-    i2c_read_blocking(I2C_PORT, MPR121_ADDR, data, 2, false);
+    // Безопасный таймаут в 2000 микросекунд (2 миллисекунды)
+    // Если чип MPR121 завис или шина занята, функция НЕ повесит процессор, 
+    // а просто вернет ошибку PICO_ERROR_TIMEOUT и пойдет дальше!
+    int res = i2c_write_blocking_until( I2C_PORT, MPR121_ADDR, & reg, 1, true, make_timeout_time_us(2000));
+    
+    if (res < 0) {
+        // Ошибка шины или таймаут — плавно выходим, возвращая 0 (кнопки не нажаты)
+        return 0; 
+    }
 
-    return (uint16_t)(data[0] | (data[1] << 8));
+    res = i2c_read_blocking_until( I2C_PORT, MPR121_ADDR, data, 2, false, make_timeout_time_us(2000));
+    if (res < 0) {
+        return 0;
+    }
+
+    return ( uint16_t)( data[ 0] | ( data[ 1] << 8));
 }
