@@ -16,9 +16,9 @@ static BYTE spi_xfer(BYTE data) {
     // АППАРАТНАЯ ЗАЩИТА ОТ ЗАВИСАНИЯ SPI ПОД RP2350:
     // Если буфер FIFO приемника забит мусором из-за наводок при выключенном CS, 
     // принудительно вычищаем его перед началом новой транзакции.
-    // while (spi_is_readable(SD_SPI_PORT)) {
-    //    (void)spi_get_hw(SD_SPI_PORT)->dr; // читаем регистр данных в пустоту
-    // }
+    while (spi_is_readable(SD_SPI_PORT)) {
+        (void)spi_get_hw(SD_SPI_PORT)->dr; // читаем регистр данных в пустоту
+    }
     // Чистый, безопасный и атомарный вызов Pico SDK сам все вычитает и запишет
     spi_write_read_blocking(SD_SPI_PORT, &data, &out, 1);
     return out;
