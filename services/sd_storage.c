@@ -173,6 +173,10 @@ bool sd_storage_scan_files(const char* dir_path) {
 
             sd_info.file_count++;
         }
+        // === ИСПРАВЛЕНИЕ: Аппаратный зазор для одноядерного цикла RP2350 ===
+        // Даем прерываниям UART MIDI и опросу кнопок из main.c чисто выполниться 
+        // в паузах между чтением секторов, не ломая внутренний кэш и стек FatFS!
+        // sleep_us(5); 
     }
 
     f_closedir(&dir);

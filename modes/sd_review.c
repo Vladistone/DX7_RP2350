@@ -78,16 +78,24 @@ void sd_review_update(uint16_t touched, int enc_delta) {
         if (touched) {
             uint16_t idx = g_current_index;
             if (sd_info.files[idx].type == FILE_TYPE_FOLDER) {
-                // Вход во вложенную папку (исходная простая склейка)
-                char next_path[64];
+                // Вход во вложенную папку
+                char next_path[64]; // <--- ИСПРАВЛЕНО КВАДРАТНЫМИ СКОБКАМИ! Тепер это строка на 64 байта
                 snprintf(next_path, sizeof(next_path), "/%s", sd_info.files[idx].name);
+                
+                // Принудительно гасим рабочую область экрана перед долгим чтением, 
+                // чтобы дисплей визуально не залипал на старом корне
+                ui_clear_work_area(); 
+                
                 sd_storage_scan_files(next_path);
                 g_current_index = 0;
+                
+                // СБРОС ТРИГГЕРА: исключаем повторный ложный заход в блок клика на следующем такте цикла
+                touched = false; 
             } else {
                 sd_review_send_current_file();
+                touched = false;
             }
         }
-
         sd_review_render();
     }
 }
