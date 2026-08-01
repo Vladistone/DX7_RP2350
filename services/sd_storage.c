@@ -45,24 +45,38 @@ bool sd_storage_init(void) {
         g_sd_mounted = false;
         return false;
     }
+
     printf("[INIT] SD disk_initialize OK\n");
 
-    // Указание явного ID тома "0:" заставляет FatFS принудительно 
-    // просканировать MBR и найти первый активный FAT32 раздел, даже если он сдвинут Mac-ом
+    // 1. СНАЧАЛА ПРИНУДИТЕЛЬНО МОНТИРУЕМ ТОМ
+    static FATFS fs; 
     FRESULT res = f_mount(&fs, "0:", 1); 
     if (res != FR_OK) {
         printf("[ERROR] SD Mount registration failed: %d\n", res);
         g_sd_mounted = false;
         return false;
     }
-
     printf("[INIT] SD Volume registered\n");
+
+    // 2. СТРОГО ПОСЛЕ УСПЕШНОГО МОНТАЖА СЧИТЫВАЕМ ЕМКОСТЬ И ТИП ФС
+    FATFS *p_fs; 
+    DWORD fre_clust, fre_sect, tot_sect;
+    
+    if (f_getfree("0:", &fre_clust, &p_fs) == FR_OK) {
+        tot_sect = (p_fs->n_fatent - 2) * p_fs->csize;
+        fre_sect = fre_clust * p_fs->csize;
+        
+        sd_info.total_capacity_mb = tot_sect / 2048;
+        sd_info.free_space_mb = fre_sect / 2048;
+        
+        // Используем штатное поле структуры FATFS 'fs_type' (1-FAT12, 2-FAT16, 3-FAT32, 4-exFAT)
+        sd_info.card_type = p_fs->fs_type; 
+    }
+
     sd_spi_set_high_speed();
     sd_info.is_mounted = true;
     g_sd_mounted = true;
-    printf("SD mounted success.1\n");
-    // ХАК ДЛЯ ПРОВЕРКИ: Жестко отключаем создание дефолтных папок на флешке
-    // sd_storage_ensure_defaults(); 
+    printf("SD mounted success.\n");
     return true;
 }
 
@@ -113,69 +127,50 @@ static bool has_extension(const char *filename, const char *ext) {
 }
 
 // Сканирование директории и наполнение списка sd_info
-bool sd_storage_scan_files(const char* dir_path) {
-    printf("[SD] Scanning path: %s\n", dir_path);
-    printf("[SD] is_mounted: %d\n", sd_info.is_mounted);
+// Добавляем аргумент uint8_t page (0 - файлы 1-31, 1 - файлы 32-62 и т.д.)
+bool sd_storage_scan_files_page(const char* dir_path, uint8_t page) {
+    printf("[SD] Scanning path: %s, Page: %d\n", dir_path, page);
     sd_info.file_count = 0;
     if (!sd_info.is_mounted) return false;
 
-    static DIR dir;       
-    static FILINFO fno;   
+    DIR dir;       
+    FILINFO fno;   
     
     FRESULT res = f_opendir(&dir, dir_path);
-    printf("[SD] f_opendir result: %d\n", res);
-    if (res != FR_OK) {
-        printf("[SD] f_opendir error: %d\n", res);
-        return false;
-    }
+    if (res != FR_OK) return false;
 
-    // Добавляем переход на уровень вверх
-    if (strcmp(dir_path, "/") != 0 && strcmp(dir_path, "") != 0) {
-        snprintf(sd_info.files[0].name, SD_MAX_FILENAME_LEN, ".. [UP]");
-        sd_info.files[0].type = FILE_TYPE_FOLDER;
+    int skipped_files = 0;
+    // Вычисляем сколько файлов нужно пропустить (30 файлов на страницу, оставляя место под кнопки навигации)
+    int target_skip = page * 30; 
+
+    while (f_readdir(&dir, &fno) == FR_OK && fno.fname != 0) {
+        if (fno.fname[0] == '.') continue;
+        if (fno.fattrib & AM_SYS || fno.fattrib & AM_HID) continue;
+
+        // Пропускаем файлы предыдущих страниц
+        if (skipped_files < target_skip) {
+            if (!(fno.fattrib & AM_DIR)) {
+                skipped_files++;
+            }
+            continue;
+        }
+
+        if (sd_info.file_count >= SD_MAX_FILES) {
+            break;
+        }
+
+        uint16_t idx = sd_info.file_count;
+        snprintf(sd_info.files[idx].name, SD_MAX_FILENAME_LEN, "%s", fno.fname);
+
+        if (fno.fattrib & AM_DIR) {
+            sd_info.files[idx].type = FILE_TYPE_FOLDER;
+        } else if (has_extension(fno.fname, ".syx") || has_extension(fno.fname, ".mid")) {
+            sd_info.files[idx].type = FILE_TYPE_MIDI_SYSEX;
+        } else {
+            sd_info.files[idx].type = FILE_TYPE_OTHER;
+        }
+
         sd_info.file_count++;
-    }
-
-    // 2. Чтение списка файлов и папок (БЕЗОПАСНЫЙ ИСХОДНЫЙ ЦИКЛ БЕЗ СОРТИРОВОК)
-    while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0] != 0) {
-        
-        // Фильтруем системный маркер точки
-        if (fno.fname[0] == '.') {
-            // Сдвигаем итератор FatFS ручным холостым чтением, чтобы не зависать в петле
-            continue; 
-        }
-
-        // ЖЕЛЕЗОБЕТОННАЯ ЗАЩИТА PRINTF: Ограничиваем вывод максимум 31 символом (через %31s)!
-        // Теперь printf гарантированно оборвет печать и никогда не повесит ядро RP2350,
-        // даже если FatFS выдаст строку без терминального нуля.
-        printf("[SD] Found item: %31s (attrib: %02X)\n", fno.fname, fno.fattrib);
-        // fflush(stdout);
-        if (!(fno.fattrib & AM_SYS) && !(fno.fattrib & AM_HID)) {
-            
-            if (sd_info.file_count >= SD_MAX_FILES) {
-                break;
-            }
-
-            uint16_t idx = sd_info.file_count;
-            
-            // Защищаем копирование в массив sd_info
-            snprintf(sd_info.files[idx].name, SD_MAX_FILENAME_LEN, "%s", fno.fname);
-
-            if (fno.fattrib & AM_DIR) {
-                sd_info.files[idx].type = FILE_TYPE_FOLDER;
-            } 
-            else if (has_extension(fno.fname, ".syx") || has_extension(fno.fname, ".mid")) {
-                sd_info.files[idx].type = FILE_TYPE_MIDI_SYSEX;
-            } 
-            else {
-                sd_info.files[idx].type = FILE_TYPE_OTHER;
-            }
-
-            sd_info.file_count++;
-        }
-        // === ИСПРАВЛЕНИЕ: Аппаратный зазор для одноядерного цикла RP2350 ===
-        // Даем прерываниям UART MIDI и опросу кнопок из main.c чисто выполниться 
-        // в паузах между чтением секторов, не ломая внутренний кэш и стек FatFS!
         sleep_us(5); 
     }
 
@@ -216,7 +211,6 @@ bool sd_storage_load_theme(const char* theme_filename) {
 
     // Если файл прочитался — парсим его значения (в зависимости от вашего формата: текст или бинарник)
     // ... парсинг ...
-
     return true;
 }
 

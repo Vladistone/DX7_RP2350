@@ -26,6 +26,10 @@ typedef struct {
     bool is_mounted;
     uint16_t file_count;
     sd_file_entry_t files[SD_MAX_FILES];
+    
+    uint8_t card_type;       // Тип: SDSC, SDHC, SDC
+    uint32_t total_capacity_mb; // Емкость в МБ
+    uint32_t free_space_mb;    // Свободно в МБ
 } sd_storage_t;
 
 // Глобальный экземпляр данных SD-карты
@@ -37,6 +41,7 @@ bool sd_ensure_ready(void);
 bool sd_storage_load_theme(const char* theme_filename);
 bool sd_storage_scan_files(const char* dir_path);
 int32_t sd_storage_read_file(const char* filepath, uint8_t* buffer, uint32_t max_len);
+bool sd_storage_scan_files_page(const char* dir_path, uint8_t page);
 
 // Получение текущей активной цветовой схемы темы
 const UI_Theme sd_storage_get_current_theme(void);

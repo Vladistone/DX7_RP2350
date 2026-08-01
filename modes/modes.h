@@ -23,6 +23,6 @@ void midi_bridge_render(void);
 void midi_bridge_update(uint16_t touched, int enc_delta);
 
 void system_mode_render(void);
-void system_mode_update(uint16_t touched);
+void system_mode_update(uint16_t touched, int enc_delta);
 
 #endif // MODES_H

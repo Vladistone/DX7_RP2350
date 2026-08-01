@@ -20,7 +20,7 @@ void ui_draw_statusbar(const char* mode_tag, bool sd_status, uint8_t midi_ch) {
     clear_rect(0, 0, TFT_WIDTH, 22, current_theme.bar_bg_color);
 
     // 2. Вывод метки режима слева: [PLAY], [SYS], [DAW], [FILE][cite: 11]
-    char left_buf[12];
+    char left_buf[24];
     snprintf(left_buf, sizeof(left_buf), "%s", mode_tag);
     draw_text_scaled(6, 4, left_buf, current_theme.accent_color, current_theme.bar_bg_color, 1);
 

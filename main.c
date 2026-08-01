@@ -163,9 +163,7 @@ static void system_init(void) {
     printf("=== Initialization Complete ===\n\n");
 }
 
-// ---------------------------------------------------------------------------
 // Главный цикл приложения (Event Loop)
-// ---------------------------------------------------------------------------
 int main(void) {
     system_init();
     printf("System init done.\n");
@@ -180,9 +178,7 @@ int main(void) {
 
     printf("Entering main loop...\n");
     while (true) {
-        // -------------------------------------------------------------------
-        // А. Монолитный опрос всей физической периферии (РАБОТАЕТ ВСЕГДА)
-        // -------------------------------------------------------------------
+        // 1. Монолитный опрос всей физической периферии (РАБОТАЕТ ВСЕГДА)
         int enc_delta         = encoder_get_delta();
         bool enc_single_click = encoder_is_button_pressed();
         bool enc_double_click = encoder_is_double_clicked();
@@ -197,9 +193,7 @@ int main(void) {
             current_touch |= 0XFFFF; // Взводим биты, если была нажата механика
         }
 
-        // -------------------------------------------------------------------
-        // Б. Чтение системной кнопки GP23 (с защитой от дребезга контактов)
-        // -------------------------------------------------------------------
+        // 2. Чтение системной кнопки GP23 (с защитой от дребезга контактов)
         bool current_btn_raw = gpio_get(BTN_SYS_MODE);
         bool btn_sys_triggered = false;
 
@@ -211,9 +205,7 @@ int main(void) {
         }
         last_btn_state = current_btn_raw;
 
-        // -------------------------------------------------------------------
-        // В. Реакция на смену режимов (по кнопке или дабл-клику)
-        // -------------------------------------------------------------------
+        // 3. Реакция на смену режимов (по кнопке или дабл-клику)
         if (btn_sys_triggered || enc_double_click) {
             printf("[EVENT] Mode switch triggered!\n");
             switch_to_next_mode();
@@ -221,12 +213,15 @@ int main(void) {
             // Если переключились на режим SD-карты, принудительно инициализируем том
             if (g_current_mode == MODE_FILE_SELECT) {
                 sd_review_init();
+                // Обнуляем переменные клика прямо в точке смены режима!
+                // Это полностью сотрет "хвост" нажатия от тумблера/энкодера
+                current_touch = 0;
+                enc_delta = 0;
+                enc_single_click = false; // если такой флаг есть
             }
         }
 
-        // -------------------------------------------------------------------
-        // Г. Передача событий в текущий активный режим через эффективный SWITCH
-        // -------------------------------------------------------------------
+        // 4. Передача событий в текущий активный режим через эффективный SWITCH
         switch (g_current_mode) {
             case MODE_PLAYBACK:
                 // Передаем реальные клики и шаги в режим синтезатора
@@ -238,9 +233,16 @@ int main(void) {
                 if (pad_raw == 0xFFFF) {
                     pad_raw = 0;
                 }
+                // Локальный предохранитель первого входа
+                static bool first_run = true;
+                if (first_run) {
+                    current_touch = 0; // Стираем фантомный клик при самом первом проходе режима!
+                    enc_delta = 0;
+                    first_run = false;
+                }
+
                 sd_review_update(current_touch, enc_delta);
                 break;
-
 
             case MODE_USB_MIDI:
                 midi_bridge_update(current_touch, enc_delta);
@@ -248,10 +250,9 @@ int main(void) {
 
             case MODE_SYSTEM_CONFIG:
                 if (current_touch != last_touch || enc_delta != 0 || enc_single_click) {
-                    system_mode_update(current_touch);
+                    system_mode_update(current_touch, enc_delta);
                 }
                 break;
-
             default:
                 break;
         }
