@@ -12,10 +12,6 @@ project(DX7_RP2350_upgrade C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
-# printf не должен вешать ядро при переполнении буфера USB
-pico_set_program_feature(your_target_name BUTTON_CONSOLES_NON_BLOCKING 1)
-
-
 # Инициализация Pico SDK
 pico_sdk_init()
 
@@ -78,7 +74,13 @@ target_link_libraries(DX7_RP2350_upgrade
 
 # 4. Включаем вывод stdio
 pico_enable_stdio_usb(DX7_RP2350_upgrade 1)   # Вывод через USB CDC
-pico_enable_stdio_uart(DX7_RP2350_upgrade 1)  # Вывод через UART TX/RX
+pico_enable_stdio_uart(DX7_RP2350_upgrade 0)  # Вывод через UART TX/RX
 
-# 5. Генерируем прошивку (.uf2, .bin, .hex)
+# 5. Устанавливаем реальные флаги Pico SDK для неблокирующего USB-вывода
+target_compile_definitions(DX7_RP2350_upgrade PRIVATE
+    PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS=0    # Не ждем терминал при старте
+    PICO_STDIO_USB_POST_CHARS_TIMEOUT_MS=1       # Таймаут 1 мс, чтобы не виснуть без кабеля
+)
+
+# 6. Генерируем прошивку (.uf2, .bin, .hex)
 pico_add_extra_outputs(DX7_RP2350_upgrade)

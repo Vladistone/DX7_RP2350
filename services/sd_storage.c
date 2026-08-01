@@ -149,7 +149,7 @@ bool sd_storage_scan_files(const char* dir_path) {
         // Теперь printf гарантированно оборвет печать и никогда не повесит ядро RP2350,
         // даже если FatFS выдаст строку без терминального нуля.
         printf("[SD] Found item: %31s (attrib: %02X)\n", fno.fname, fno.fattrib);
-
+        // fflush(stdout);
         if (!(fno.fattrib & AM_SYS) && !(fno.fattrib & AM_HID)) {
             
             if (sd_info.file_count >= SD_MAX_FILES) {
