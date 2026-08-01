@@ -12,6 +12,10 @@ project(DX7_RP2350_upgrade C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
+# printf не должен вешать ядро при переполнении буфера USB
+pico_set_program_feature(your_target_name BUTTON_CONSOLES_NON_BLOCKING 1)
+
+
 # Инициализация Pico SDK
 pico_sdk_init()
 
