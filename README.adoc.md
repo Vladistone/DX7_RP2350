@@ -21,15 +21,15 @@
 
 ## Проект должен обеспечивать:
 
-- [tips] Трансляцию MIDI CC ↔ SysEx;
-- [tips] File-managment SysEx-патчей с SD-карты;
-- [tips] Playback файлов midi c SD-карты;
-- [tips] USB/SD Mass storage при подключении к PC;
-- [tips] USB/MIDI клиент при работе с DAW;
-- [tips] Автономную работу с внешними USB илии MIDI контроллерами как USB/MIDI_bridge;
-- [tips] GUI на собственный TFT LCD;
-- [caution] TEST program для настройки конфигурации RP2350 и периферии (debug_mode);
-- [note] HELP, info mode (краткий инфрмационный бюллетень на TFT LCD);
+- [TIP] Трансляцию MIDI CC ↔ SysEx;
+- [TIP] File-managment SysEx-патчей с SD-карты;
+- [TIP] Playback файлов midi c SD-карты;
+- [TIP] USB/SD Mass storage при подключении к PC;
+- [TIP] USB/MIDI клиент при работе с DAW;
+- [TIP] Автономную работу с внешними USB илии MIDI контроллерами как USB/MIDI_bridge;
+- [TIP] GUI на собственный TFT LCD;
+- [CAUTION] TEST program для настройки конфигурации RP2350 и периферии (debug_mode);
+- [NOTE] HELP, info mode (краткий инфрмационный бюллетень на TFT LCD);
 - 📁 Выбор MIDI CC# профиля default контроллеров как Assigned Map table из preload list.   
 
 ## 📁 Структура проекта
