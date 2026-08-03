@@ -20,7 +20,7 @@
 
 Аппаратно-программный модуль управления синтезатором Yamaha DX7 на базе микроконтроллера **Raspberry Pi RP2350**. 
 
-// Reusable text snippets / Проект должен обеспечивать:
+# Проект должен обеспечивать:
 - Трансляцию MIDI CC ↔ SysEx;
 - File-managment SysEx-патчей с SD-карты;
 - Playback файлов midi c SD-карты;
