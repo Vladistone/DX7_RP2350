@@ -43,4 +43,28 @@
 #define LED_INIT_PIN   24
 #define LED_LOOP_PIN   25
 
+// =================================================================
+// DEBUG CONFIGURATION
+// =================================================================
+#define DEBUG_GLOBAL_ENABLE     1   // Главный выключатель отладки
+#define DEBUG_SD_REVIEW_ENABLE  1   // Отладка модуля sd_review.c
+
+#if (DEBUG_GLOBAL_ENABLE && DEBUG_SD_REVIEW_ENABLE)
+    #include "tusb.h"
+    #include "pico/stdlib.h"
+    #include <stdio.h>
+
+    // Безопасный неблокирующий макрос с точным таймштампом (секунды.микросекунды)
+    #define SD_LOG(fmt, ...) \
+        do { \
+            if (tud_cdc_connected() && tud_cdc_write_available() >= 64) { \
+                uint64_t _us = time_us_64(); \
+                uint32_t _sec = (uint32_t)(_us / 1000000ULL); \
+                uint32_t _rem_us = (uint32_t)(_us % 1000000ULL); \
+                printf("[%04u.%06u][SD_REV] " fmt "\n", _sec, _rem_us, ##__VA_ARGS__); \
+            } \
+        } while (0)
+#else
+    #define SD_LOG(fmt, ...) do {} while(0)
+
 #endif // HW_CONFIG_H

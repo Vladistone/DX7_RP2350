@@ -21,7 +21,7 @@ static uint8_t g_last_rendered_page = 0xFF; // Хранитель предыду
 
 // Отрисовка интерактивной карты Touchpad
 static void draw_mpr121_visual_map_clean(uint16_t touched, int start_x, int start_y, bool force_redraw) {
-    int box_w = 32;
+    int box_w = 28;
     int box_h = 14;
     int gap = 4;
 
@@ -37,10 +37,10 @@ for (int i = 0; i < 12; i++) {
         // КРИТИЧЕСКИЙ СЕКТОРНЫЙ ФИЛЬТР: перерисовываем кубик ТОЛЬКО если его состояние 
         // реально изменилось по сравнению с прошлым тактом, либо принудительно при смене страницы!
         if (force_redraw || (is_pressed != was_pressed)) {
-            int col = i % 3;
-            int row = i / 3;
-            int x = start_x + col * (box_w + gap);
-            int y = start_y + 14 + row * (box_h + gap);
+            int col = i % 4;
+            int row = i / 4;
+            int x = 14 + start_x + col * (box_w + gap);
+            int y = 14 + start_y + row * (box_h + gap);
             
             uint16_t color = is_pressed ? current_theme.accent_color : 0x31A6; 
 
@@ -53,8 +53,8 @@ for (int i = 0; i < 12; i++) {
             // При ширине шрифта ~6px и высоте ~8px:
             // Смещение по X: x + 5 (идеальный центр по горизонтали для "XX")
             // Смещение по Y: y + 3 (подняли на 1 пиксель вверх, чтобы компенсировать базовую линию шрифта)
-            uint16_t text_x = x + 7; // Выравнивание координат по центру кубика
-            uint16_t text_y = y; // БЫЛО: uint16_t text_y = y + 3;
+            uint16_t text_x = x + 5; // Выравнивание координат по центру кубика
+            uint16_t text_y = y + 0; // БЫЛО: uint16_t text_y = y + 3;
             // 3. СМЕНА ЦВЕТА СИМВОЛОВ НА БИРЮЗОВЫЙ ДЛЯ ЧИТАЕМОСТИ
             // Если кнопка зажата — инвертируем цвет текста (черный на бирюзовом), 
             // если отпущена — бирюзовый текст на сером кубике.
@@ -64,18 +64,34 @@ for (int i = 0; i < 12; i++) {
             draw_text_scaled(text_x, text_y, num_str, text_color, color, 1);
         }
     }
-    g_last_mpr_state = touched; // Запоминаем текущую маску тача    
-}
+        /*
+        // Отрисовка символа градуса справа от всей сетки
+        // Рассчитываем крайнюю правую координату всей матрицы кубиков (4 колонки)
+        int total_grid_w = 4 * box_w + 3 * gap; 
+        int degree_x = 14 + start_x + total_grid_w + 10; // +10 пикселей отступа справа от сетки
+
+        // Центрируем символ градуса по вертикали относительно всей сетки (3 строки)
+        int total_grid_h = 3 * box_h + 2 * gap;
+        int degree_y = 14 + start_y + (total_grid_h / 2) - 4; // -4 для визуальной корректировки
+
+        // Выводим символ в зависимости от вашей библиотеки (выберите один вариант):
+        draw_text_scaled(0, degree_y, "°", current_theme.accent_color, current_theme.bg_color, 1);
+        //display_print_at(degree_x, degree_y, "°");    // Если библиотека поддерживает UTF-8
+        // display_print_at(degree_x, degree_y, "\xB0"); // Если это Adafruit_GFX / CP437
+        // display_draw_circle(degree_x, degree_y, 3, COLOR_WHITE); // Если рисуем геометрией
+        */
+        g_last_mpr_state = touched; // Запоминаем текущую маску тача    
+    }
 // СТРАНИЦА 1: Реальная диагностика геометрии SD-карты
 static void render_page_diagnostics(uint16_t touched, float v_sys, int start_y, bool page_changed) {
     char buf[40];
     
     if (page_changed) {
         uint32_t cpu_hz = clock_get_hz(clk_sys) / 1000000;
-        snprintf(buf, sizeof(buf), "CORE: RP2350 @ %luMHz", cpu_hz);
+        snprintf(buf, sizeof(buf), "CORE: RP2350 @%luMHz|FW:1.0.2", cpu_hz);
         draw_text_scaled(10, start_y, buf, current_theme.accent_color, current_theme.bg_color, 1);
         
-        snprintf(buf, sizeof(buf), "POWER: %.2fV  |  FW: v1.0.2", v_sys);
+        snprintf(buf, sizeof(buf), "POWER: %.2fV", v_sys);  //|  FW: v1.0.2", v_sys);
         draw_text_scaled(10, start_y + 11, buf, current_theme.text_color, current_theme.bg_color, 1);
         
         // ВЫВОД РЕАЛЬНОГО ТИПА И СВОБОДНОЙ ЕМКОСТИ КАРТЫ С КОРРЕКТНЫМИ ДАННЫМИ
@@ -83,9 +99,15 @@ static void render_page_diagnostics(uint16_t touched, float v_sys, int start_y, 
             const char* type_str = (sd_info.card_type & 12) ? "SDHC" : "SDSC";
             // Если карта огромная, переводим вывод в Гигабайты (МБ / 1024)
             if (sd_info.total_capacity_mb > 4096) {
-                snprintf(buf, sizeof(buf), "SD: %s | %luGB | FREE: %luGB", type_str, sd_info.total_capacity_mb / 1024, sd_info.free_space_mb / 1024);
+                snprintf(buf, sizeof(buf), "SD: %s | %.1fGB | FREE: %.1fGB",
+                    type_str,
+                    (double)sd_info.total_capacity_mb / 1024 / 1000,
+                    (double)sd_info.free_space_mb / 1024/ 1000);
             } else {
-                snprintf(buf, sizeof(buf), "SD: %s | %luMB | FREE: %luMB", type_str, sd_info.total_capacity_mb, sd_info.free_space_mb);
+                snprintf(buf, sizeof(buf), "SD: %s | %.1fMB | FREE: %.1fMB",
+                    type_str,
+                    (double)sd_info.total_capacity_mb / 1000,
+                    (double)sd_info.free_space_mb / 1000);
             }
         } else {
             snprintf(buf, sizeof(buf), "SD CARD: NOT MOUNTED / ERROR");
@@ -99,7 +121,7 @@ static void render_page_diagnostics(uint16_t touched, float v_sys, int start_y, 
         draw_mpr121_visual_map_clean(touched, 10, start_y + 46, page_changed);
 
         // Отрисовка статической легенды (только один раз!)
-        uint16_t lx = 152;
+        uint16_t lx = 160;
         uint16_t ly = start_y + 60;
         snprintf(buf, sizeof(buf), "%s,%s:CURS U/D", STR(MPR_CUR_UP), STR(MPR_CUR_DN));
         draw_text_scaled(lx, ly, buf, current_theme.text_color, current_theme.bg_color, 1);

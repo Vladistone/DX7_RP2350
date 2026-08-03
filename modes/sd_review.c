@@ -8,19 +8,32 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "encoder_dvr.h"
-#include "TFT_dvr.h"       
-#include "pico/stdlib.h"   
-#include "midi_uart.h"
-#include "sd_storage.h"  
-#include "ui_engine.h"   
-#include <stdio.h>
-#include <string.h>
-
 static int g_current_index = 0;
 static char current_browser_path[128] = "/"; 
 static uint8_t g_current_page = 0; 
 static bool g_force_redraw = false; 
+
+// ПЕРЕКЛЮЧАТЕЛЬ ЛОГОВ SD_REVIEW: 
+// 1 = Логи с таймштампами активны
+// 0 = Логи полностью вырезаются компилятором (Zero Overhead)
+/*
+    #define DEBUG_SD_REVIEW_ENABLE  1
+
+    #if DEBUG_SD_REVIEW_ENABLE
+        // Безопасный неблокирующий вывод с точным таймштампом от старта (секунды.микросекунды)
+        #define SD_LOG(fmt, ...) \
+            do { \
+                if (tud_cdc_connected() && tud_cdc_write_available() >= 64) { \
+                    uint64_t _us = time_us_64(); \
+                    uint32_t _sec = (uint32_t)(_us / 1000000ULL); \
+                    uint32_t _rem_us = (uint32_t)(_us % 1000000ULL); \
+                    printf("[%04u.%06u][SD_REV] " fmt "\n", _sec, _rem_us, ##__VA_ARGS__); \
+                } \
+            } while (0)
+    #else
+        #define SD_LOG(fmt, ...) do {} while(0)
+    #endif
+*/
 
 bool sd_review_init(void) {
     printf("[SD] sd_review_init called\n");
