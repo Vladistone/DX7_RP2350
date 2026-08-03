@@ -17,21 +17,20 @@
 |Last update of relevant screenshots: |`2026-07-25 (v0.0.1)`
 |===
 
+# Аппаратно-программный модуль управления синтезатором Yamaha DX7 на базе микроконтроллера **Raspberry Pi RP2350**. 
 
-Аппаратно-программный модуль управления синтезатором Yamaha DX7 на базе микроконтроллера **Raspberry Pi RP2350**. 
+## Проект должен обеспечивать:
 
-# Проект должен обеспечивать:
-
-- Трансляцию MIDI CC ↔ SysEx;
-- File-managment SysEx-патчей с SD-карты;
-- Playback файлов midi c SD-карты;
-- USB/SD Mass storage при подключении к PC;
-- USB/MIDI клиент при работе с DAW;
-- Автономную работу с внешними USB илии MIDI контроллерами как USB/MIDI_bridge;
-- GUI на собственный TFT LCD;
-- TEST program для настройки конфигурации RP2350 и периферии (debug_mode);
-- HELP, info mode (краткий инфрмационный бюллетень на TFT LCD);
-- Выбор MIDI CC# профиля default контроллеров как Assigned Map table из preload list.   
+- [tips] Трансляцию MIDI CC ↔ SysEx;
+- [tips] File-managment SysEx-патчей с SD-карты;
+- [tips] Playback файлов midi c SD-карты;
+- [tips] USB/SD Mass storage при подключении к PC;
+- [tips] USB/MIDI клиент при работе с DAW;
+- [tips] Автономную работу с внешними USB илии MIDI контроллерами как USB/MIDI_bridge;
+- [tips] GUI на собственный TFT LCD;
+- [caution] TEST program для настройки конфигурации RP2350 и периферии (debug_mode);
+- [note] HELP, info mode (краткий инфрмационный бюллетень на TFT LCD);
+- 📁 Выбор MIDI CC# профиля default контроллеров как Assigned Map table из preload list.   
 
 ## 📁 Структура проекта
 
