@@ -13,8 +13,8 @@
 :caution-caption: pass:[&#8252;]
 
 |===
-|Last update of text: |`2023-02-25 (v2.14.3)`
-|Last update of relevant screenshots: |`2023-02-25 (v2.14.3)`
+|Last update of text: |`2026-08-2 (v0.0.3)`
+|Last update of relevant screenshots: |`2026-07-25 (v0.0.1)`
 |===
 
 
@@ -30,7 +30,7 @@
 - GUI на собственный TFT LCD;
 - TEST program для настройки конфигурации RP2350 и периферии (debug_mode);
 - HELP, info mode (краткий инфрмационный бюллетень на TFT LCD);
-- Выбор MIDI CC# профиля default контроллеров как Assigned Map table из preload list.
+- Выбор MIDI CC# профиля default контроллеров как Assigned Map table из preload list.   
 
 ## 📁 Структура проекта
 
