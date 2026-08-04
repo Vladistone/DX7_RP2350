@@ -79,7 +79,7 @@ pico_enable_stdio_uart(DX7_RP2350_upgrade 0)  # Вывод через UART TX/RX
 # 5. Устанавливаем реальные флаги Pico SDK для неблокирующего USB-вывода
 target_compile_definitions(DX7_RP2350_upgrade PRIVATE
     PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS=0    # Не ждем терминал при старте
-    PICO_STDIO_USB_POST_CHARS_TIMEOUT_MS=1       # Таймаут 1 мс, чтобы не виснуть без кабеля
+    PICO_STDIO_USB_POST_CHARS_TIMEOUT_MS=0      # Таймаут 1 мс, чтобы не виснуть без кабеля
 )
 
 # 6. Генерируем прошивку (.uf2, .bin, .hex)

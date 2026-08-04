@@ -14,7 +14,7 @@ sd_storage_t sd_info = { .is_mounted = false, .file_count = 0 };
 
 static FATFS fs;          // Рабочая область FatFS
 //static FATFS g_fatfs;
-static bool g_sd_mounted = false;
+//static bool g_sd_mounted = false;
 //static bool g_sd_initialized = false;
 static void sd_storage_ensure_defaults(void);
 
@@ -31,7 +31,7 @@ DWORD get_fattime(void) {
 
 // Монтирование накопителя
 bool sd_storage_init(void) {
-    if (g_sd_mounted) {
+    if (sd_info.is_mounted) {
         printf("[SD] Already mounted, skipping.\n");
         return true;
     }
@@ -42,7 +42,7 @@ bool sd_storage_init(void) {
     DSTATUS status = disk_initialize(0);
     if (status & STA_NOINIT) {
         printf("[ERROR] SD disk_initialize failed: %d\n", status);
-        g_sd_mounted = false;
+        sd_info.is_mounted = false;
         return false;
     }
 
@@ -53,7 +53,7 @@ bool sd_storage_init(void) {
     FRESULT res = f_mount(&fs, "0:", 1); 
     if (res != FR_OK) {
         printf("[ERROR] SD Mount registration failed: %d\n", res);
-        g_sd_mounted = false;
+        sd_info.is_mounted = false;
         return false;
     }
     printf("[INIT] SD Volume registered\n");
@@ -75,19 +75,18 @@ bool sd_storage_init(void) {
 
     sd_spi_set_high_speed();
     sd_info.is_mounted = true;
-    g_sd_mounted = true;
-    printf("SD mounted success.\n");
+    printf("[SD] Mounted successfully.\n");;
     return true;
 }
 
 // Универсальная обертка для обработки ошибок FatFS
 FRESULT sd_safe_operation(FRESULT res) {
     if (res == FR_NOT_READY || res == FR_DISK_ERR || res == FR_INT_ERR || res == FR_NOT_ENABLED) {
-        if (g_sd_mounted) {
+        if (sd_info.is_mounted) {
             printf("SD Card error (%d). SD might to remove\n", res);
-            //g_sd_mounted = false;
             // Размонтируем корректно без паники
             f_mount(NULL, "", 0);
+            sd_info.is_mounted = false; // ИСПРАВЛЕНО: Сбрасываем статус при ошибке!
         }
     }
     return res;
@@ -95,7 +94,7 @@ FRESULT sd_safe_operation(FRESULT res) {
 
 // Пример функции обновления/проверки в фоновом цикле или при попытке доступа
 bool sd_ensure_ready(void) {
-    if (!g_sd_mounted) {
+    if (!sd_info.is_mounted) {
         printf("SD not mounted, re-mounting...\n");
         return sd_storage_init();
     }
@@ -104,7 +103,7 @@ bool sd_ensure_ready(void) {
     DSTATUS status = disk_status(0);
     if (status & STA_NOINIT) {
         printf("SD card lost, re-mounting...\n");
-        g_sd_mounted = false; // Сбрасываем флаг, чтобы инициировать перемонтирование
+        sd_info.is_mounted = false; // Сбрасываем флаг, чтобы инициировать перемонтирование
         return sd_storage_init();
     }
     

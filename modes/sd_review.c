@@ -34,7 +34,7 @@ static bool g_force_redraw = false;
         #define SD_LOG(fmt, ...) do {} while(0)
     #endif
 */
-
+    
 bool sd_review_init(void) {
     printf("[SD] sd_review_init called\n");
     g_current_index = 0;

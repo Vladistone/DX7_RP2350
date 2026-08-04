@@ -1,5 +1,49 @@
+++++
+<style>
+  /* Мягкий графитовый фон и приглушенный светло-серый текст */
+  body { 
+    background-color: #2b303c !important; 
+    color: #dfe4ea !important; 
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  /* Цвет заголовков — спокойный молочный */
+  h1, h2, h3, h4, h5, h6 { 
+    color: #f1f2f6 !important; 
+    border-bottom: 1px solid #4b5263 !important; 
+  }
+  /* Блок с кодом (структура проекта) — чуть темнее основного фона для объема */
+  pre.listingblock, code, .literalblock pre {
+    background-color: #21242d !important;
+    color: #a5b1c2 !important;
+    border: 0.5px solid #3d4455 !important;
+  }
+  /* Текст внутри списков и блоков предупреждений */
+  .admonitionblock td.content, .ulist, .olist { 
+    color: #dcdde1 !important; 
+  }
+  /* Ссылки — мягкий пастельно-голубой */
+  a { 
+    color: #45aaf2 !important; 
+  }
+  /* СКРЫВАЕМ СТАНДАРТНЫЕ МАРКЕРЫ-ТОЧКИ ДЛЯ СПИСКОВ С ИКОНКАМИ */
+  .ulist ul {
+    list-style-type: none !important;
+    padding-left: 10px !important;
+  }
+  /* Делаем небольшой отступ между элементами списка, чтобы они не слипались */
+  .ulist li {
+    margin-bottom: 6px !important;
+  }
+</style>
+++++
+
+
 [#Back-to-Top""]
-= DX7 RP2350 MIDI Controller & Translator
+= DX7 RP2350 MIDI Coninstroller & Translator
+:icons: font
+:max-width: 100%
+:docinfo: shared
+:github-theme: dark
 :toc:
 :toclevels: 3
 :doctype: book
@@ -7,10 +51,10 @@
 :partnums:
 :sectnumlevels: 3
 :experimental:
-:tip-caption: pass:[&#128161;]
-:warning-caption: pass:[&#9888;]
-:note-caption: pass:[&#128204;]
-:caution-caption: pass:[&#8252;]
+:tip-caption: :bulb:
+:warning-caption: :warning:
+:note-caption: :pushpin:
+:caution-caption: :exclamation:
 
 |===
 |Last update of text: |`2026-08-2 (v0.0.3)`
@@ -21,16 +65,16 @@
 
 ## Проект должен обеспечивать:
 
-- [TIP] Трансляцию MIDI CC ↔ SysEx;
-- [TIP] File-managment SysEx-патчей с SD-карты;
-- [TIP] Playback файлов midi c SD-карты;
-- [TIP] USB/SD Mass storage при подключении к PC;
-- [TIP] USB/MIDI клиент при работе с DAW;
-- [TIP] Автономную работу с внешними USB илии MIDI контроллерами как USB/MIDI_bridge;
-- [TIP] GUI на собственный TFT LCD;
-- [CAUTION] TEST program для настройки конфигурации RP2350 и периферии (debug_mode);
-- [NOTE] HELP, info mode (краткий инфрмационный бюллетень на TFT LCD);
-- 📁 Выбор MIDI CC# профиля default контроллеров как Assigned Map table из preload list.   
+* 💡 Трансляцию MIDI CC ↔ SysEx;
+* 💡 File-management SysEx-патчей с SD-карты;
+* 💡 Playback файлов midi с SD-карты;
+* 💡 USB/SD Mass storage при подключении к PC;
+* 💡 USB/MIDI клиент при работе с DAW;
+* 💡 Автономную работу с внешними USB или MIDI контроллерами как USB/MIDI_bridge;
+* 💡 GUI на собственный TFT LCD;
+* ⚠️ TEST program для настройки конфигурации RP2350 и периферии (debug_mode);
+* 📌 HELP, info mode (краткий информационный бюллетень на TFT LCD);
+* 🗒️ Выбор MIDI CC# профиля default контроллеров как Assigned Map table из preload list. 
 
 ## 📁 Структура проекта
 

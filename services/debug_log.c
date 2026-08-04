@@ -4,7 +4,7 @@
 #include "sd_storage.h"
 #include "pico/stdlib.h"
 #include "hardware/clocks.h"
-#include "numpad_dvr.h"       // Подключаем ваш хедер маппинга кнопок MPR121
+#include "numpad_dvr.h"       // Подключаем маппинг кнопок MPR121
 #include <stdio.h>
 #include <stdarg.h>
 

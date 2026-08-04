@@ -10,7 +10,7 @@ static uint8_t current_patch = 1;
 static int selected_index = 0; // Индекс выбранной строки в видимом списке (0, 1 или 2)
 
 void play_mode_render(void) {
-    ui_draw_statusbar("PLAY", sd_info.is_mounted, 1);
+    ui_draw_statusbar("PLAY MODE", sd_info.is_mounted, 16);
     ui_clear_work_area();
 
     char buf[32];

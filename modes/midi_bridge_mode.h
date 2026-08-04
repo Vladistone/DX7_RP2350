@@ -3,6 +3,7 @@
 #define MIDI_BRIDGE_MODE_H
 
 #include <stdint.h>
+#include <stdio.h>
 
 // Инициализация режима моста / ретранслятора
 void midi_bridge_init(void);
