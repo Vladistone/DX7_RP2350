@@ -36,7 +36,7 @@ static bool g_force_redraw = false;
 */
     
 bool sd_review_init(void) {
-    printf("[SD] sd_review_init called\n");
+    SD_LOG("sd_review_init called");
     g_current_index = 0;
     g_current_page = 0; 
     
@@ -46,6 +46,7 @@ bool sd_review_init(void) {
         if (!sd_storage_init()) return false;
     }
 
+    debug_chrono_sd_op("SCAN_DIR...", current_browser_path);
     sd_storage_scan_files_page("/", 0);
 
     g_force_redraw = true; 
@@ -152,15 +153,17 @@ void sd_review_update(uint16_t touched, int enc_delta) {
         }
 
         if (touched) {
+            debug_chrono_user_action("CLK_manualy");
             if (g_current_index >= 0 && g_current_index < display_count) {
                 
                 // НАЖАТИЕ НА НАВЕРХ
                 if (is_subfolder && g_current_index == 0) {
-                    printf("[SD UI] Reset path to root\n");
+                    SD_LOG("[SD UI] Reset path to root\n");
                     snprintf(current_browser_path, sizeof(current_browser_path), "/");
                     g_current_page = 0; 
                     
-                    ui_clear_work_area(); 
+                    ui_clear_work_area();
+                    debug_chrono_sd_op("SCAN_DIR...", current_browser_path);
                     sd_storage_scan_files_page(current_browser_path, 0); 
                     
                     g_current_index = 0;
@@ -170,16 +173,17 @@ void sd_review_update(uint16_t touched, int enc_delta) {
                 // НАЖАТИЕ НА СЛЕДУЮЩУЮ СТРАНИЦУ [DWN]
                 else if (show_next_button && g_current_index == (display_count - 1)) {
                     g_current_page++; 
-                    printf("[SD UI] Loading next page: %d\n", g_current_page);
+                    SD_LOG("[SD UI] Loading next page: %d\n", g_current_page);
                     
                     ui_clear_work_area();
+                    debug_chrono_sd_op("SCAN_DIR...", current_browser_path);
                     sd_storage_scan_files_page(current_browser_path, g_current_page);
-                    
+                    debug_chrono_sd_op("BROWSE_DIR", current_browser_path);
                     g_current_index = is_subfolder ? 1 : 0; 
                     g_force_redraw = true;
                     return;
                 }
-                // НАЖАТИЕ НА ЭЛЕМЕНТ
+                // НАЖАТИЕ НА file-ЭЛЕМЕНТ *.sys или *.mid
                 else {
                     int file_idx = is_subfolder ? (g_current_index - 1) : g_current_index;
 
@@ -188,7 +192,8 @@ void sd_review_update(uint16_t touched, int enc_delta) {
                             snprintf(current_browser_path, sizeof(current_browser_path), "/%s", sd_info.files[file_idx].name);
                             g_current_page = 0; 
 
-                            ui_clear_work_area(); 
+                            ui_clear_work_area();
+                            debug_chrono_sd_op("SCAN_DIR...", current_browser_path);
                             sd_storage_scan_files_page(current_browser_path, 0);
                             g_current_index = 0;
                             g_force_redraw = true; 
@@ -238,10 +243,10 @@ bool sd_review_send_current_file(void) {
     
     int32_t bytes_read = sd_storage_read_file(filename, sysex_buffer, sizeof(sysex_buffer));
     if (bytes_read > 0) {
-        printf("[SD] Sending %s to DX7...\n", filename);
+        SD_LOG("[SD] Sending %s to DX7...\n", filename);
         midi_send_sysex(sysex_buffer, (uint16_t)bytes_read);
         return true;
     }
-    printf("[SD ERROR] Read failed on file %s\n", filename);
+    SD_LOG("[SD ERROR] Read failed on file %s\n", filename);
     return false;
 }

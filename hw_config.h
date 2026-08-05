@@ -44,29 +44,50 @@
 #define LED_LOOP_PIN   25
 
 // =================================================================
-// DEBUG CONFIGURATION
+// DEBUG CONFIGURATION (Глобальный допуск кода при сборке)
 // =================================================================
-#define DEBUG_GLOBAL_ENABLE     0   // Главный выключатель отладки
-#define DEBUG_SD_REVIEW_ENABLE  0   // Отладка модуля sd_review.c
+#define DEBUG_GLOBAL_ENABLE     1   // 1 - код отладки вкомпилирован, 0 - вырезан полностью
 
-#if (DEBUG_GLOBAL_ENABLE && DEBUG_SD_REVIEW_ENABLE)
+#if DEBUG_GLOBAL_ENABLE
     #include "tusb.h"
     #include "pico/stdlib.h"
     #include <stdio.h>
 
+    #define DEBUG_SD_FILE_NAME "0:/sys_trace.log"
+
+    // Динамические флаги управления (Сервисное меню / GUI)
+    extern volatile bool g_cli_debug_usb_active; // Вывод логов в USB (нагрузка на MIDI/DAW)
+    extern volatile bool g_cli_debug_sd_active;  // Автономная запись "черного ящика" на SD
+
+    // Прототипы сервисных функций
+    void debug_chrono_init(void);
+    void debug_chrono_user_action(const char* control_name);
+    void debug_chrono_sd_op(const char* op, const char* path);
+    void debug_file_log_write(const char* fmt, ...);
+
+    // Умный макрос: отправляет данные только в те каналы, которые ВКЛЮЧЕНЫ в GUI
     #define SD_LOG(fmt, ...) \
         do { \
-            if (tud_cdc_connected()) { \
+            if (g_cli_debug_usb_active || g_cli_debug_sd_active) { \
                 uint64_t _us = time_us_64(); \
                 uint32_t _sec = (uint32_t)(_us / 1000000ULL); \
                 uint32_t _rem_us = (uint32_t)(_us % 1000000ULL); \
-                printf("[%04u.%06u][SD_REV] " fmt "\n", _sec, _rem_us, ##__VA_ARGS__); \
-                stdio_flush(); \
+                if (g_cli_debug_usb_active && tud_cdc_connected()) { \
+                    printf("[%04u.%06u][DEBUG] " fmt "\n", _sec, _rem_us, ##__VA_ARGS__); \
+                    stdio_flush(); \
+                } \
+                if (g_cli_debug_sd_active) { \
+                    debug_file_log_write("[%04u.%06u][DEBUG] " fmt "\n", _sec, _rem_us, ##__VA_ARGS__); \
+                } \
             } \
         } while (0)
 #else
-    #define SD_LOG(fmt, ...) do {} while(0)
+    // Если разработчик отключил дебаг при сборке - Zero Overhead
+    #define SD_LOG(fmt, ...)            do {} while(0)
+    #define debug_chrono_init()         do {} while(0)
+    #define debug_chrono_user_action(x) do {} while(0)
+    #define debug_chrono_sd_op(x, y)    do {} while(0)
+#endif // Конец блока отладки (DEBUG_GLOBAL_ENABLE...)
 
-#endif // Конец блока отладки DEBUG
+#endif // HW_CONFIG_H (Самый последний закрывающий endif файла!)
 
-#endif // HW_CONFIG_H

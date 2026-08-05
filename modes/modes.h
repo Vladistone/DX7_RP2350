@@ -7,6 +7,7 @@ typedef enum {
     MODE_PLAYBACK,
     MODE_FILE_SELECT,
     MODE_USB_MIDI,
+    MODE_HELP,
     MODE_SYSTEM_CONFIG,
     MODE_COUNT
 } AppModeState;
@@ -21,6 +22,9 @@ void sd_review_update(uint16_t touched, int enc_delta);
 
 void midi_bridge_render(void);
 void midi_bridge_update(uint16_t touched, int enc_delta);
+
+void help_render(void);
+void help_update(uint16_t touched, int enc_delta);
 
 void system_mode_render(void);
 void system_mode_update(uint16_t touched, int enc_delta);
