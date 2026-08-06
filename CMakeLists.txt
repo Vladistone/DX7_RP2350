@@ -39,6 +39,8 @@ add_executable(DX7_RP2350_upgrade
     modes/play_mode.c
     modes/sd_review.c
     modes/midi_bridge_mode.c
+    modes/help_mode.c
+
 
     # Mapping: Встроенные профили контроллеров
     mapping/map_default.c
