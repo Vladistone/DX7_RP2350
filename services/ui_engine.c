@@ -1,13 +1,14 @@
 #include "ui_engine.h"
+#include "modes.h"
 #include "TFT_dvr.h"
 #include "sd_storage.h"
 #include <stdio.h>
 
-// Статическая переменная для прецизионного отслеживания переключения страниц
+// Два хранителя состояния для прецизионного предотвращения мерцания
+// и статическего трекера для надежного контроля рантайм-состояний ядра
+static uint8_t ui_last_active_page = 0xFF;           // Хранит страницу прошлого кадра
+static AppModeState ui_last_active_mode = MODE_COUNT; 
 static uint8_t ui_last_page_idx = 0xFF;
-// Статические переменные Движка Страниц
-//static uint8_t ui_current_page = 0;
-//static uint8_t ui_last_rendered_page = 0xFF;
 
 void ui_engine_init(void) {
     fill_screen(current_theme.bg_color);
@@ -61,33 +62,55 @@ void ui_clear_work_area(void) {
 // =================================================================
 // ГЛАВНЫЙ РЕНДЕР МГОНОСТРАНИЧНОСТИ UI КОНТЕНТА ЛЮБОГО РЕЖИМА
 // =================================================================
-void ui_render_mode_layout(const char* header, uint8_t cur_page, uint8_t total_pages, void (*render_content_cb)(void)) {
-    bool page_changed = (cur_page != ui_last_page_idx);
+void ui_render_mode_layout(const char* header, uint8_t cur_page, uint8_t total_pages, bool force_redraw, void (*render_content_cb)(void)) {
+    // Триггер 1: Сменился ли сам режим (например, PLAYBACK -> HELP или SYS CONFIG)?
+    bool mode_changed = (g_current_mode != ui_last_active_mode);
     
-    if (page_changed) {
-        ui_last_page_idx = cur_page;
+    // Триггер 2: Перелистнули ли мы страницу внутри текущего режима?
+    bool page_changed = (cur_page != ui_last_active_page);
+    
+    // ЕСЛИ ПРОИЗОШЛА СМЕНА РЕЖИМА ИЛИ СТРАНИЦЫ — ПРИНУДИТЕЛЬНО ПЕРЕСТРАИВАЕМ ВЕСЬ КАРКАС
+    if (mode_changed || page_changed) {
+        ui_last_active_mode = g_current_mode;
+        //ui_last_active_page = cur_page;
         
-        // 1. Отрисовка статусбара (название режима берется из аргумента header)
+        // 1. Отрисовка статусбара (без мерцания)
         char header_buf[32];
-        snprintf(header_buf, sizeof(header_buf), "%s | P.%d", header, cur_page + 1);
+        if (total_pages > 1) {
+            snprintf(header_buf, sizeof(header_buf), "%s | P.%d", header, cur_page + 1);
+        } else {
+            snprintf(header_buf, sizeof(header_buf), "%s", header);
+        }
         ui_draw_statusbar(header_buf, sd_info.is_mounted, 1);
         
-        // 2. Прецизионная очистка рабочей зоны (вызывается строго при смене страницы)
+        // 2. Начисто стираем рабочую зону от мусора предыдущего режима!
         ui_clear_work_area();
         
-        // 3. Отрисовка футера с текущим балансом страниц
+        // 3. Отрисовка подвала (футера) с актуальным балансом страниц
         char footer_buf[16];
         snprintf(footer_buf, sizeof(footer_buf), "PAGE %d/%d", cur_page + 1, total_pages);
         ui_draw_footer(footer_buf);
+        
+        // ВАЖНО: Если контент страниц полностью статический (как текст), 
+        // ему нужно знать, что рабочая зона ТОЛЬКО ЧТО очистилась и её нужно прописать заново.
+        // Для этого мы принудительно вызываем коллбэк отрисовки контента внутри условия,
+        // чтобы он зафиксировал чистый холст.
+        if (render_content_cb != NULL) {
+            render_content_cb();
+        }
+        return; // Кадр каркаса успешно перестроен, выходим
     }
 
-    // 4. Вызываем заполнение уникальным контентом, который передал активный режим
+    // ДЛЯ ПОСЛЕДУЮЩИХ ЦИКЛИЧЕСКИХ КАДРОВ (Когда режим и страница не меняются):
+    // Просто продолжаем непрерывно рендерить живой динамический контент 
+    // (например, живую карту кнопок MPR121, вольтметр или бегущую строку) БЕЗ очистки экрана!
     if (render_content_cb != NULL) {
         render_content_cb();
     }
 }
+
     // 2. ДИНАМИЧЕСКОЕ НАПОЛНЕНИЕ СТРАНИЦЫ 1 (Зависит от выбранного режима устройства!)
-/*    if (ui_current_page == 0) {
+/*   if (ui_current_page == 0) {
         switch (g_current_mode) {
             case MODE_HELP:
                 // Если мы в режиме HELP - на странице 1 вызываем чистую диагностику

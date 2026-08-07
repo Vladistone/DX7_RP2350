@@ -6,7 +6,10 @@
 #include <stdio.h>
 
 static uint8_t sys_page_idx = 0;
+static bool sys_force_redraw = true;
+
 #define SYS_TOTAL_PAGES 5
+static int selected_item = 1;
 
 // Описание технического сервисного контента
 static void draw_sys_p1_hardware_stats(void) { /* Живые вольты, такты, геометрия SD */ }
@@ -25,7 +28,10 @@ static void (*sys_pages[SYS_TOTAL_PAGES])(void) = {
 };
 
 void system_mode_render(void) {
-    ui_render_mode_layout("SYS Config", sys_page_idx, SYS_TOTAL_PAGES, sys_pages[sys_page_idx]);
+    // Передаем системный индекс и триггер прокрутки в конвейер
+    ui_render_mode_layout("SYS Config", sys_page_idx, SYS_TOTAL_PAGES, sys_force_redraw, sys_pages[sys_page_idx]);
+    
+    sys_force_redraw = false; // Сбрасываем триггер
 }
 
 void system_mode_update(uint16_t touched, int enc_delta) {

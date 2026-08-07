@@ -28,7 +28,8 @@ void ui_clear_work_area(void);
 // ====================================================================
 // ЕДИНЫЙ АБСТРАКТНЫЙ КОНВЕЙЕР МНОГОСТРАНИЧНЫХ РЕЖИМОВ
 // ====================================================================
-void ui_render_mode_layout(const char* header, uint8_t cur_page, uint8_t total_pages, void (*render_content_cb)(void));
+void ui_render_mode_layout(const char* header, uint8_t cur_page, uint8_t total_pages, bool force_redraw, void (*render_content_cb)(void));
+
 
 // ХЕЛПЕРЫ ПОЗИЦИОНИРОВАНИЯ (Для использования внутри режимов)
 void ui_draw_text_rel(int rel_x, int rel_y, const char* text, uint16_t color, uint8_t scale);

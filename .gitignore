@@ -15,9 +15,12 @@ main3.c
 sd_storage_SORTED.c
 debug_log_OLD2.c
 debug_log_OLD.c
+sd_review1.c
 sd_review2.c
 system_mode1.c
 help_mode1.c
+diskio_FUCK.c
+diskio_STUB.c
 
 # Игнорируем скрытые настройки сред разработки (если используете)
 .vscode/

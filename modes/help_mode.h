@@ -20,4 +20,4 @@ void help_mode_render(uint16_t mpr_touched_state, float v_sys);
 // Прототип футера из ui_engine.c, чтобы убрать варнинг компилятора
 void ui_draw_footer(const char* text);
 
-#endif // DEBUG_LOG_H
+#endif // HELP_LOG_H
