@@ -55,11 +55,11 @@ void print_system_banner(void) {
     int hour, min;
     sscanf(__TIME__, "%d:%d", &hour, &min);
 
-    printf("\n================================================\n");
+    printf("\n==============================================\n");
     // Выводим строго в формате ЧЧ:ММ ДД.ММ.ГГ
-    printf("DX7 RP2350 Controller System Start: %02d:%02d %02d.%02d.%02d\n", 
-           hour, min, day, month, year % 100);
-    printf("================================================\n");
+    printf(" PICO Controller System Start: %02d.%02d.%02d %02d:%02d\n", 
+            day, month, year % 100, hour, min);
+    printf("==============================================\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -89,6 +89,10 @@ static void switch_to_next_mode(void) {
             
         case MODE_USB_MIDI:       
             midi_bridge_render(); 
+            break;
+
+        case MODE_HELP:
+            help_render(); 
             break;
             
         case MODE_SYSTEM_CONFIG: 
@@ -156,7 +160,7 @@ static void system_init(void) {
     sysex_cc_map_init(&map_nucleus2_profile);
 
     // 7. Запуск UI Engine
-    ui_engine_init();
+    //ui_engine_init();
 
     // Гасим светодиод инициализации
     gpio_put(LED_INIT_PIN, 0);
@@ -212,7 +216,7 @@ int main(void) {
             
             // Если переключились на режим SD-карты, принудительно инициализируем том
             if (g_current_mode == MODE_FILE_SELECT) {
-                sd_review_init();
+                // sd_review_init();
                 // Обнуляем переменные клика прямо в точке смены режима!
                 // Это полностью сотрет "хвост" нажатия от тумблера/энкодера
                 current_touch = 0;

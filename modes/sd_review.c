@@ -272,4 +272,3 @@ void sd_review_update(uint16_t touched, int enc_delta) {
         sd_review_render();
     }
 }
-

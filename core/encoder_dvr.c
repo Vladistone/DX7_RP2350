@@ -39,8 +39,8 @@ int encoder_get_delta(void) {
     uint8_t state_a = gpio_get(ENC_PIN_A);
     
     if (state_a != last_state_a) {
-        if (state_a == 0) { // Срабатывание по спаду сигнала A (GP10)
-            if (gpio_get(ENC_PIN_B) == 1) { // Сигнал B (GP11)
+        if (state_a == 0) { // Срабатывание по спаду сигнала A (GP4)
+            if (gpio_get(ENC_PIN_B) == 1) { // Сигнал B (GP5)
                 delta = 1;  // Вправо
             } else {
                 delta = -1; // Влево

@@ -1,111 +1,78 @@
 #include "ui_engine.h"
-#include "modes.h"
-#include "TFT_dvr.h"
+#include "modes.h"      
+#include "TFT_dvr.h"     // Видит все функции Блока 6
 #include "sd_storage.h"
 #include <stdio.h>
 
-// Два хранителя состояния для прецизионного предотвращения мерцания
-// и статическего трекера для надежного контроля рантайм-состояний ядра
-static uint8_t ui_last_active_page = 0xFF;           // Хранит страницу прошлого кадра
-static AppModeState ui_last_active_mode = MODE_COUNT; 
-static uint8_t ui_last_page_idx = 0xFF;
+// Официальные статические трекеры состояний графического ядра
+static AppModeState ui_engine_last_mode = MODE_COUNT;
+static uint8_t ui_engine_last_page = 0xFF;
 
-void ui_engine_init(void) {
-    fill_screen(current_theme.bg_color);
-}
-
-void ui_set_theme(uint16_t bg, uint16_t text, uint16_t accent, uint16_t bar_bg, uint16_t bar_text) {
-    current_theme.bg_color = bg;
-    current_theme.text_color = text;
-    current_theme.accent_color = accent;
-    current_theme.bar_bg_color = bar_bg;
-    current_theme.bar_text_color = bar_text;
+void ui_clear_work_area(void) {
+    // Чистая очистка рабочей зоны экрана (Оффсет сверху 24px, снизу 16px)
+    clear_rect(0, 24, TFT_WIDTH, TFT_HEIGHT - 24 - 16, current_theme.bg_color);
 }
 
 void ui_draw_statusbar(const char* mode_tag, bool sd_status, uint8_t midi_ch) {
-    // 1. Отрисовка плашки верха (высота 22px)[cite: 11]
-    clear_rect(0, 0, TFT_WIDTH, 22, current_theme.bar_bg_color);
-
-    // 2. Вывод метки режима слева: [PLAY], [SYS], [DAW], [FILE][cite: 11]
-    char left_buf[24];
-    snprintf(left_buf, sizeof(left_buf), "%s", mode_tag);
-    draw_text_scaled(6, 4, left_buf, current_theme.accent_color, current_theme.bar_bg_color, 1);
-
-    // 3. Вывод статуса справа: SD:OK / SD:-- и MIDI Ch[cite: 11]
-    char right_buf[16];
-    snprintf(right_buf, sizeof(right_buf), "SD:%s CH:%02d", sd_status ? "OK" : "--", midi_ch);
-    // Автовыравнивание по правому краю
-    int text_w = strlen(right_buf) * 10; // 6px на символ
-    draw_text_scaled(TFT_WIDTH - text_w - 8, 4, right_buf, current_theme.accent_color, current_theme.bar_bg_color, 1);
-    //draw_text_scaled(TFT_WIDTH - 110, 4, right_buf, current_theme.accent_color, current_theme.bar_bg_color, 1);
-
-    // 4. Линия разделения[cite: 11]
-    clear_rect(0, 22, TFT_WIDTH, 2, current_theme.accent_color);
+    clear_rect(0, 0, TFT_WIDTH, 24, current_theme.bar_bg_color);
+    draw_text_scaled(10, 6, mode_tag, current_theme.bar_text_color, current_theme.bar_bg_color, 1);
+    
+    // Выводим только маркер ошибки красным цветом, если карты нет
+    draw_text_scaled(TFT_WIDTH - 80, 6, "SD:", current_theme.bar_text_color, current_theme.bar_bg_color, 1);
+    draw_text_scaled(TFT_WIDTH - 56, 6, sd_status ? "OK" : "-", sd_status ? 0x07E0 : 0xF800, current_theme.bar_bg_color, 1);
 }
 
-// функция для корректной отрисовки нижней панели (подвала) без искажений
 void ui_draw_footer(const char* footer_text) {
-    // Очищаем область подвала внизу экрана (высота 20px)
-    clear_rect(0, TFT_HEIGHT - UI_FOOTER_HEIGHT, TFT_WIDTH, UI_FOOTER_HEIGHT, current_theme.bar_bg_color);
-    //clear_rect(0, TFT_HEIGHT - 20, TFT_WIDTH, 20, current_theme.bar_bg_color);
-    // Выводим текст подсказок через правильный масштабируемый шрифтовой движок
-    draw_text_scaled(10, TFT_HEIGHT - 16, footer_text, current_theme.bar_text_color, current_theme.bar_bg_color, 1);
+    // 1. Начисто очищаем нижнюю плашку подвала высотой 16 пикселей
+    clear_rect(0, TFT_HEIGHT - 16, TFT_WIDTH, 16, current_theme.bar_bg_color);
+    
+    // 2. ИСПРАВЛЕНО: Печатаем текст подвала строго через существующую draw_text_scaled!
+    // Отступ X=10, Y вычисляется как верхний край подвала + 2 пикселя оффсета для ровного шрифта 8x12
+    draw_text_scaled(10, TFT_HEIGHT - 14, footer_text, current_theme.bar_text_color, current_theme.bar_bg_color, 1);
 }
 
-void ui_clear_work_area(void) {
-    // Очищает область под статус-баром (y >= 24)
-    // Исправлено: очищает ТОЛЬКО область между Хедером и Футером
-    clear_rect(UI_WORK_X, UI_WORK_Y, UI_WORK_WIDTH, UI_WORK_HEIGHT, current_theme.bg_color);
-    //clear_rect(0, 24, TFT_WIDTH, TFT_HEIGHT - 24 - 20, current_theme.bg_color); // work window (start_y: 24; end_y: 20)
-}
-
-// =================================================================
-// ГЛАВНЫЙ РЕНДЕР МГОНОСТРАНИЧНОСТИ UI КОНТЕНТА ЛЮБОГО РЕЖИМА
-// =================================================================
+// ====================================================================
+// ИДЕАЛЬНО ОТПОЛИРОВАННЫЙ КОНВЕЙЕР "НОВЫХ РЕЛЬС" UI_ENGINE
+// ====================================================================
 void ui_render_mode_layout(const char* header, uint8_t cur_page, uint8_t total_pages, bool force_redraw, void (*render_content_cb)(void)) {
-    // Триггер 1: Сменился ли сам режим (например, PLAYBACK -> HELP или SYS CONFIG)?
-    bool mode_changed = (g_current_mode != ui_last_active_mode);
+    // Проверяем изменения рантайм-кадра
+    bool mode_changed = (g_current_mode != ui_engine_last_mode);
+    bool page_changed = (cur_page != ui_engine_last_page);
     
-    // Триггер 2: Перелистнули ли мы страницу внутри текущего режима?
-    bool page_changed = (cur_page != ui_last_active_page);
-    
-    // ЕСЛИ ПРОИЗОШЛА СМЕНА РЕЖИМА ИЛИ СТРАНИЦЫ — ПРИНУДИТЕЛЬНО ПЕРЕСТРАИВАЕМ ВЕСЬ КАРКАС
-    if (mode_changed || page_changed) {
-        ui_last_active_mode = g_current_mode;
-        //ui_last_active_page = cur_page;
+    // ОТРИСОВКА КАДРА: Строго один раз в момент изменений или по принудительному флагу!
+    if (mode_changed || page_changed || force_redraw) {
+        ui_engine_last_mode = g_current_mode;
+        ui_engine_last_page = cur_page;
         
-        // 1. Отрисовка статусбара (без мерцания)
         char header_buf[32];
         if (total_pages > 1) {
             snprintf(header_buf, sizeof(header_buf), "%s | P.%d", header, cur_page + 1);
         } else {
             snprintf(header_buf, sizeof(header_buf), "%s", header);
         }
-        ui_draw_statusbar(header_buf, sd_info.is_mounted, 1);
         
-        // 2. Начисто стираем рабочую зону от мусора предыдущего режима!
+        // Перестраиваем каркас и чистим рабочую область
+        ui_draw_statusbar(header_buf, sd_info.is_mounted, 1);
         ui_clear_work_area();
         
-        // 3. Отрисовка подвала (футера) с актуальным балансом страниц
-        char footer_buf[16];
+        char footer_buf[32];
         snprintf(footer_buf, sizeof(footer_buf), "PAGE %d/%d", cur_page + 1, total_pages);
         ui_draw_footer(footer_buf);
         
-        // ВАЖНО: Если контент страниц полностью статический (как текст), 
-        // ему нужно знать, что рабочая зона ТОЛЬКО ЧТО очистилась и её нужно прописать заново.
-        // Для этого мы принудительно вызываем коллбэк отрисовки контента внутри условия,
-        // чтобы он зафиксировал чистый холст.
+        // Прописываем контент на чистый холст строго ОДИН РАЗ!
         if (render_content_cb != NULL) {
             render_content_cb();
         }
-        return; // Кадр каркаса успешно перестроен, выходим
+        return; // Кадр построен, выходим! Шина SPI полностью свободна!
     }
 
-    // ДЛЯ ПОСЛЕДУЮЩИХ ЦИКЛИЧЕСКИХ КАДРОВ (Когда режим и страница не меняются):
-    // Просто продолжаем непрерывно рендерить живой динамический контент 
-    // (например, живую карту кнопок MPR121, вольтметр или бегущую строку) БЕЗ очистки экрана!
-    if (render_content_cb != NULL) {
-        render_content_cb();
+    // ДЛЯ ЦИКЛИЧЕСКИХ КАДРОВ (Когда стоим на месте):
+    // Разрешаем сквозной вызов контента БЕЗ очистки экрана СТРОГО только на Первой странице HELP
+    // (для теста тачпада MPR121) и Первой странице SYS Config (для замера живого вольтметра)
+    if (cur_page == 0 && (g_current_mode == MODE_HELP || g_current_mode == MODE_SYSTEM_CONFIG)) {
+        if (render_content_cb != NULL) {
+            render_content_cb();
+        }
     }
 }
 
@@ -144,7 +111,6 @@ void ui_render_mode_layout(const char* header, uint8_t cur_page, uint8_t total_p
 // =================================================================
 // РЕАЛИЗАЦИЯ ХЕЛПЕРОВ
 // =================================================================
-
 void ui_draw_text_rel(int rel_x, int rel_y, const char* text, uint16_t color, uint8_t scale) {
     int abs_x = UI_WORK_X + rel_x;
     int abs_y = UI_WORK_Y + rel_y;

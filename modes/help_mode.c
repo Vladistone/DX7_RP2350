@@ -81,7 +81,7 @@ void help_render(void) {
     // Передаем help_force_redraw напрямую в шлюз ui_engine!
     // Движок сам решит, чистить холст или просто крутить живую графику
     ui_render_mode_layout("HELP Guide", help_page_idx, HELP_TOTAL_PAGES, help_force_redraw, help_pages[help_page_idx]);
-    
+
     help_force_redraw = false; // Сбрасываем триггер после отрисовки кадра
 }
 
