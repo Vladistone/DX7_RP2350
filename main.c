@@ -117,9 +117,10 @@ static void switch_to_next_mode(void) {
 static void system_init(void) {
     // 1. Старт stdio (USB CDC)
     stdio_init_all();
-    printf("=== System Start ===\n");
-    sleep_ms(1000); 
     
+    sleep_ms(1000); 
+    printf("=== System Start ===\n");
+
     // Вызываем хронометрированный баннер
     print_system_banner(); 
 
@@ -228,7 +229,7 @@ int main(void) {
         // 4. Передача событий в текущий активный режим через эффективный SWITCH
         switch (g_current_mode) {
             case MODE_PLAYBACK:
-                // Передаем реальные клики и шаги в режим синтезатора
+                // Передаем реальные клики и шаги в режим Playback
                 play_mode_update(current_touch, enc_delta);
                 break;
 
@@ -244,7 +245,6 @@ int main(void) {
                     enc_delta = 0;
                     first_run = false;
                 }
-
                 sd_review_update(current_touch, enc_delta);
                 break;
 
@@ -252,6 +252,12 @@ int main(void) {
                 midi_bridge_update(current_touch, enc_delta);
                 break;
 
+            case MODE_HELP:
+                if (current_touch != last_touch || enc_delta != 0 || enc_single_click) {
+                    help_update(current_touch, enc_delta);
+                }
+                break;
+                
             case MODE_SYSTEM_CONFIG:
                 if (current_touch != last_touch || enc_delta != 0 || enc_single_click) {
                     system_mode_update(current_touch, enc_delta);

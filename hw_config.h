@@ -15,8 +15,8 @@
 #define TFT_BLK_PWM 22   // Подсветка через PWM
 
 // 2. Энкодер KY-040 (GPIO)
-#define ENC_PIN_A   4
-#define ENC_PIN_B   5
+#define ENC_PIN_B   4
+#define ENC_PIN_A   5
 #define ENC_PIN_SW  14
 
 // 3. MPR121 Touchpad (I2C0)

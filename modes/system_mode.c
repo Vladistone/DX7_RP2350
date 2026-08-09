@@ -19,6 +19,12 @@ static bool sys_force_redraw = true;
 #define SYS_TOTAL_PAGES 5
 static int selected_item = 1;
 
+void system_mode_init(void) {
+    sys_page_idx = 0;           // <-- СБРОС
+    sys_force_redraw = true;     // <-- ПРИНУДИТЕЛЬНАЯ ПЕРЕРИСОВКА
+    system_mode_render();
+}
+
 // ====================================================================
 // АППАРАТНЫЙ ЗАМЕР ВНЕШНЕГО Vin ОТ DX7 (GPIO26 -> ADC0)
 // ====================================================================
@@ -117,17 +123,18 @@ static void draw_sys_p1_hardware_stats(void) {
     ui_draw_text_rel(10, current_y, buf, i2c_color, 1);
 }
 
- /* Кастомизация переменных тачпада */
-static void draw_sys_p2_mpr121_reassign(void) {
-    // HELP: Описываем логику манипуляций согласно hw_config.h
-    ui_draw_text_rel(10, 30, "ENC Turn : Scroll files / Change Page", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 45, "ENC SW   : Select File / Confirm (GP14)", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 60, "SYS Mode : Switch active Engine (GP23)", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 75, "LED Init : Blinks during system start", current_theme.text_color, 1);
+static void draw_sys_p2_mpr121_reassign(void) { // Кастомизация переменных тачпада
+    ui_draw_text_rel(10, 25 , "PAGE 2", current_theme.text_color, 1);
 }
-static void draw_sys_p3_blackbox_menu(void) { /* Сервисное меню логов USB Trace / SD BlackBox */ }
-static void draw_sys_p4_project_struct(void) { /* Структура исходного кода прошивки из README.adoc */ }
-static void draw_sys_p5_pinout(void) { /* Аппаратный справочник hw_config.h */ }
+static void draw_sys_p3_blackbox_menu(void) { // Сервисное меню логов USB Trace / SD BlackBox 
+    ui_draw_text_rel(10, 40, "PAGE 3", current_theme.text_color, 1);
+}
+static void draw_sys_p4_project_struct(void) { // Структура исходного кода прошивки из README.adoc
+    ui_draw_text_rel(10, 55, "PAGE 4", current_theme.text_color, 1);
+}
+static void draw_sys_p5_pinout(void) { // Аппаратный справочник hw_config.h
+    ui_draw_text_rel(10, 70, "PAGE 5", current_theme.text_color, 1);
+}
 
 // Упорядоченный массив страниц SERVICE-интерфейса
 static void (*sys_pages[SYS_TOTAL_PAGES])(void) = {
@@ -144,8 +151,22 @@ void system_mode_render(void) {
     
     sys_force_redraw = false; // Сбрасываем триггер
 }
-
 void system_mode_update(uint16_t touched, int enc_delta) {
-    // Листание страниц инженером по sys_page_idx (от 0 до 4)
-    // И логика внутренних изменений переменных кастомизации / переключателей логов...
+    // Обработка вращения энкодера для смены страниц
+    if (enc_delta != 0) {
+        int next = sys_page_idx + enc_delta;
+        if (next < 0) next = SYS_TOTAL_PAGES - 1;
+        if (next >= SYS_TOTAL_PAGES) next = 0;
+        sys_page_idx = (uint8_t)next;
+
+        printf("[SYS_PAGE]: %d\n", sys_page_idx + 1);
+        sys_force_redraw = true; // Принудительная перерисовка каркаса
+        system_mode_render();
+    }
+
+    // Далее можно добавить логику обработки нажатия (touched), если нужна
+    // Например, для страницы 2 (переназначение кнопок):
+    //if (touched && sys_page_idx == 1) {
+        // Ваша логика для P2
+    //}
 }

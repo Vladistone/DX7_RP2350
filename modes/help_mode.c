@@ -9,6 +9,12 @@ static uint8_t help_page_idx = 0;
 #define HELP_TOTAL_PAGES 5
 static bool help_force_redraw = true; // Триггер для старта отрисовки
 
+void help_init(void) {
+    help_page_idx = 0;          // <-- СБРОС
+    help_force_redraw = true;    // <-- ПРИНУДИТЕЛЬНАЯ ПЕРЕРИСОВКА
+    help_render();
+}
+
 // ====================================================================
 // НАПОЛНЕНИЕ СТРАНИЦ РЕЖИМА HELP_MODE (USER ИНТЕРФЕЙС МУЗЫКАНТА)
 // ====================================================================
@@ -23,13 +29,18 @@ static void draw_help_p1_interactive_numpad(void) {
 
 // СТРАНИЦА 2: Гид по энкодеру и SW (Описание заложенного поведения)
 static void draw_help_p2_encoder_guide(void) {
-    ui_draw_text_rel(10, 10, "ROTARY ENCODER & SW GUIDE:", current_theme.accent_color, 1);
+    ui_draw_text_rel(10, 10, "ROTARY ENC. LED GUIDE:", current_theme.accent_color, 1);
     
     // Описываем логику манипуляций согласно hw_config.h
-    ui_draw_text_rel(10, 30, "ENC Turn : Scroll files / Change Page", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 45, "ENC SW   : Select File / Confirm (GP14)", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 60, "SYS Mode : Switch active Engine (GP23)", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 75, "LED Init : Blinks during system start", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 22, "ENC.Turn : F.Scroll / P.Change", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 35, "ENC.SW 14: F.Select / Confirm", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 48, "SYS.MD 23: Switch active Engine", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 61, "LED INT: Blinks during starting", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 74, "LED GRN: Blinks during MIDI RX", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 87, "LED BLU: Blinks during MIDI TX", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 100, "string 8", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 113, "string 9", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 126, "string 10", current_theme.text_color, 1);
 }
 
 // СТРАНИЦА 3: Настройка MIDI-каналов пользователем (Информационный маппинг)
@@ -37,10 +48,10 @@ static void draw_help_p3_midi_channel_config(void) {
     ui_draw_text_rel(10, 10, "USER MIDI CH CONFIGURATION:", current_theme.accent_color, 1);
     
     // Описание алгоритма независимой смены каналов
-    ui_draw_text_rel(10, 30, "Current TX/RX Channel maps to DX7.", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 45, "To reassign: navigate to SYS Config,", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 60, "select Page 3, click Encoder SW,", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 75, "then rotate to increment CH 1-16.", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 30, "Current MIDI Channel map to DX7", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 45, "Navigate to SYS/Config reassign", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 60, "select Page 3, click Encoder SW", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 75, "then rotate, increment CH. 1-16", current_theme.text_color, 1);
 }
 
 // СТРАНИЦА 4: Таблица CC# -> SysEx Parameters DX7 (Привязка контроллеров)
@@ -48,12 +59,12 @@ static void draw_help_p4_cc_to_sysex_table(void) {
     ui_draw_text_rel(10, 5, "MIDI CC -> DX7 SysEx PARAMETERS:", current_theme.accent_color, 1);
     
     // Выводим структурированную шпаргалку маппинга для музыканта
-    ui_draw_text_rel(10, 22, "CC #74 -> OP1-6 Cutoff (SysEx p.12)", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 35, "CC #71 -> OP1-6 Resonance (p.13)", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 48, "CC #01 -> Modulation Wheel (p.01)", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 61, "CC #07 -> Main Voice Volume (p.04)", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 74, "CC #91 -> Reverb/Delay Depth (p.20)", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 87, "CC #93 -> Chorus Level Map   (p.22)", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 22, "CC74 > OP1-6 Cutoff SysEx p.12", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 35, "CC71 > OP1-6 Resonance    p.13", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 48, "CC01 > Modulation Wheel   p.01", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 61, "CC07 > Main Voice Volume  p.04", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 74, "CC91 > Reverb/Delay Depth p.20", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 87, "CC93 > Chorus Level Map   p.22", current_theme.text_color, 1);
 }
 
 // СТРАНИЦА 5: Справочник .syx/.mid и лимиты FatFS (Форматы)
@@ -61,11 +72,11 @@ static void draw_help_p5_formats(void) {
     ui_draw_text_rel(10, 10, "SD STORAGE FORMAT LIMITS:", current_theme.accent_color, 1);
     
     // Жесткие правила файловой системы, заложенные в ffconf.h и sd_storage.h
-    ui_draw_text_rel(10, 30, "System FS    : FAT32 Standard Only", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 45, "Preset File  : .SYX (32 single patches)", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 60, "Sequence File: .MID (Standard MIDI)", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 75, "Max Filename : 32 chars (Inc. ext)", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 90, "Page Buffer  : Max 32 items per pack", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 30, "FAT32 Standard System only", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 45, "MaxFilename: 32 chars Inc.ext", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 60, "Page Buffer: 32 max items/pack", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 75, "Preset File: 32 SYS singlepatch", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 90, "Sequence MIDI: .MID Standard", current_theme.text_color, 1);
 }
 
 // Упорядоченный массив страниц USER-интерфейса
@@ -92,7 +103,9 @@ void help_update(uint16_t touched, int enc_delta) {
         if (next >= HELP_TOTAL_PAGES) next = 0;
         help_page_idx = (uint8_t)next;
 
+        printf("[HELP_PAGE]: %d\n", help_page_idx + 1);
         help_force_redraw = true; // ВЗВОДИМ ТРИГГЕР ПЕРЕРИСОВКИ КАРКАСА!
+        help_render();
     }
 }
 
