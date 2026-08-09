@@ -4,12 +4,21 @@
 #include "hw_config.h"
 
 void mpr121_init(void) {
-    i2c_init(I2C_PORT, 400 * 1000); // 400 kHz
+    i2c_init(I2C_PORT, 400 * 1000);
     gpio_set_function(I2C_SDA_PIN, GPIO_FUNC_I2C);
     gpio_set_function(I2C_SCL_PIN, GPIO_FUNC_I2C);
     gpio_pull_up(I2C_SDA_PIN);
     gpio_pull_up(I2C_SCL_PIN);
 
+    // Проверка наличия чипа
+    uint8_t reg = 0x00;
+    uint8_t data[2];
+    int res = i2c_write_blocking_until(I2C_PORT, MPR121_ADDR, &reg, 1, true, make_timeout_time_us(2000));
+    if (res < 0) {
+        printf("[MPR] ERROR: Chip not responding at 0x%02X\n", MPR121_ADDR);
+        return;
+    }
+    
     // Сброс (Stop Mode)
     uint8_t stop_cmd[] = {0x5E, 0x00};
     i2c_write_blocking(I2C_PORT, MPR121_ADDR, stop_cmd, 2, false);

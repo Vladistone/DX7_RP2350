@@ -48,8 +48,8 @@ DX7_RP2350/                  # корневая папка проекта
 │
 ├── core/                    # [ЖЕЛЕЗО] Драйверы периферии и USB
 │   ├── encoder_dvr.*        # Энкодер навигации
-│   ├── midi_uart.*          # Физический DIN5 MIDI (UART)
 │   ├── numpad_dvr.*         # Сенсорная/матричная клавиатура управления
+│   ├── midi_uart.*          # Физический DIN5 MIDI (UART)
 │   ├── SD_card.*            # Низкоуровневый SPI для SD-карты
 │   ├── TFT_dvr.*            # Драйвер LCD дисплея
 │   └── usb_descriptors.*    # TinyUSB дескрипторы (MIDI + MSC)
@@ -62,14 +62,14 @@ DX7_RP2350/                  # корневая папка проекта
 │   └── debug_log.*          # Режим отладки системы *логирование через Serial
 │
 ├── modes/                   # [РЕЖИМЫ] Состояния устройства (FSM)
-│   ├── 0 modes.h            # Главный enum состояний
-│   ├── 1 system_mode.c      # Системное меню и переключатель режимов
-│   ├── 2 play_mode.c        # Режим игры и быстрого выбора midi файлов и патчей
-│   ├── 3 Arp_mode.c         # MIDI Арпеджиатор
-│   ├── 4 midi_bridge_mode.c # Режим моста (трансляция CC ↔ SysEx)
-│   ├── 5 sd_review.c        # Браузер файлов пресетов на SD
-│   ├── 6 usb_sd_mode.c      # Режим флешки (Mass Storage)
-│   └── 7 Help_mode.c        # режим HELP info
+│   ├── 1 play_mode.c        # [DEFAULT] Режим игры и быстрого выбора midi файлов и патчей
+│   ├── 2 Arp_mode.c         # MIDI Арпеджиатор
+│   ├── 3 midi_bridge_mode.c # Режим моста (трансляция CC ↔ SysEx)
+│   ├── 4 sd_review.c        # Браузер файлов пресетов на SD
+│   ├── 5 usb_sd_mode.c      # Режим флешки (Mass Storage)
+│   ├── 6 Help_mode.c        # режим HELP info
+│   ├── 7 system_mode.c      # Системное меню и переключатель режимов
+│   └── 8 modes.h            # Главный enum состояний
 │
 └── mapping/                 # [ПРОФИЛИ] Встроенные пресеты маппинга
     ├── mapping.h            # Структуры данных таблиц

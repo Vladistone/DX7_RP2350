@@ -26,6 +26,7 @@ void midi_bridge_update(uint16_t touched, int enc_delta);
 void help_render(void);
 void help_update(uint16_t touched, int enc_delta);
 
+void system_mode_init(void);
 void system_mode_render(void);
 void system_mode_update(uint16_t touched, int enc_delta);
 

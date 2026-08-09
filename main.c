@@ -33,7 +33,7 @@ static bool sd_scanned = false;
 uint16_t mpr121_read_touched( void); 
 
 // ---------------------------------------------------------------------------
-// Вывод красивого стартового баннера с датой и временем сборки
+// Вывод стартового баннера с датой и временем сборки
 // ---------------------------------------------------------------------------
 void print_system_banner(void) {
     char m_name[4];
@@ -69,14 +69,12 @@ static void switch_to_next_mode(void) {
     g_current_mode = (AppModeState)((g_current_mode + 1) % MODE_COUNT);
     printf("[MODE_SYS] Switched to mode: %d\n", g_current_mode);
 
-    // Принудительная полная перерисовочка экрана под новый режим
     switch (g_current_mode) {
-        case MODE_PLAYBACK:      
+        case MODE_PLAYBACK:         
             play_mode_render(); 
             break;
             
         case MODE_FILE_SELECT:   
-            // Сканируем SD только при первом входе в режим
             if (!sd_scanned) {
                 if (sd_review_init()) {
                     sd_scanned = true;
@@ -87,23 +85,25 @@ static void switch_to_next_mode(void) {
             sd_review_render(); 
             break;
             
-        case MODE_USB_MIDI:       
+        case MODE_USB_MIDI:         
             midi_bridge_render(); 
             break;
 
-        case MODE_HELP:
-            help_render(); 
+        case MODE_HELP:             
+            help_render();        
             break;
             
-        case MODE_SYSTEM_CONFIG: 
-            system_mode_render(); 
+        case MODE_SYSTEM_CONFIG: {   
+            system_mode_init();   // <-- ИСПРАВЛЕНО
+            // system_mode_render(); // закомментировано, т.к. уже есть внутри
             break;
-            
+        }
         default:
             break;
     }
-}
 
+    sleep_ms(5);
+}
 //void print_system_banner(void) {
     // Пример логики, если в будущем прикрутите модуль точного времени по I2C:
     // rtc_time_t t;
@@ -257,7 +257,7 @@ int main(void) {
                     help_update(current_touch, enc_delta);
                 }
                 break;
-                
+
             case MODE_SYSTEM_CONFIG:
                 if (current_touch != last_touch || enc_delta != 0 || enc_single_click) {
                     system_mode_update(current_touch, enc_delta);

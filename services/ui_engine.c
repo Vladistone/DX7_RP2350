@@ -66,11 +66,11 @@ void ui_render_mode_layout(const char* header, uint8_t cur_page, uint8_t total_p
     // 3. ЖИВОЙ ЦИКЛИЧЕСКИЙ РАНТАЙМ (ТОЛЬКО ТАМ, ГДЕ ЕСТЬ ДИНАМИКА):
     // Разрешаем сквозной вызов контента БЕЗ очистки экрана СТРОГО на Первой странице HELP
     // (для теста тачпада MPR121) и Первой странице SYS Config (для замера живого вольтметра)
-    if (cur_page == 0 && (g_current_mode == MODE_HELP || g_current_mode == MODE_SYSTEM_CONFIG)) {
-        if (render_content_cb != NULL) {
-            render_content_cb();
-        }
-    }
+    //if (cur_page == 0 && (g_current_mode == MODE_HELP || g_current_mode == MODE_SYSTEM_CONFIG)) {
+    //    if (render_content_cb != NULL) {
+    //        render_content_cb();
+    //    }
+    //}
 }
 
     // 2. ДИНАМИЧЕСКОЕ НАПОЛНЕНИЕ СТРАНИЦЫ 1 (Зависит от выбранного режима устройства!)

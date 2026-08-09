@@ -62,41 +62,40 @@ bool encoder_is_double_clicked(void) {
     absolute_time_t now = get_absolute_time();
     bool double_clicked_detected = false;
 
-    // 1. АНТИДРЕБЕЗГ:фильтруем дребезг контактов в пределах 20 мс
+    // 1. Антидребезг: фильтруем дребезг контактов в пределах 30 мс (было 20)
     if (current_raw != last_raw_btn_state) {
-        if (absolute_time_diff_us(debounce_timer, now) > 20000) { 
+        if (absolute_time_diff_us(debounce_timer, now) > 30000) {  // <-- УВЕЛИЧИЛ
             last_raw_btn_state = current_raw;
             debounce_timer = now;
         }
     }
 
-    bool button_pressed = !last_raw_btn_state; // Инверсия (нажатие = LOW)
+    bool button_pressed = !last_raw_btn_state;
 
-    // 2. АВТОМАТ СОСТОЯНИЙ ДВОЙНОГО КЛИКА
     switch (btn_click_state) {
         case BTN_STATE_IDLE:
             if (button_pressed) {
                 btn_click_state = BTN_STATE_PRESSED_WAIT_RELEASE;
-                press_timer = now; 
+                press_timer = now;
             }
             break;
 
         case BTN_STATE_PRESSED_WAIT_RELEASE:
-            if (!button_pressed) { // Кнопку отпустили после первого клика
+            if (!button_pressed) {
                 btn_click_state = BTN_STATE_WAIT_SECOND_PRESS;
-                press_timer = now; // Перезапуск таймера ожидания второго клика
+                press_timer = now;
             }
             break;
 
         case BTN_STATE_WAIT_SECOND_PRESS:
-            if (button_pressed) { // Поймали второе нажатие
-                if (absolute_time_diff_us(press_timer, now) <= 500000) { // Уложились в 0.5 сек
+            if (button_pressed) {
+                // Увеличил окно для двойного клика до 700 мс (было 500)
+                if (absolute_time_diff_us(press_timer, now) <= 700000) {  // <-- УВЕЛИЧИЛ
                     double_clicked_detected = true;
                 }
-                btn_click_state = BTN_STATE_PRESSED_WAIT_RELEASE; 
-            } 
-            else {
-                if (absolute_time_diff_us(press_timer, now) > 500000) { // Таймаут истек
+                btn_click_state = BTN_STATE_PRESSED_WAIT_RELEASE;
+            } else {
+                if (absolute_time_diff_us(press_timer, now) > 700000) {  // <-- УВЕЛИЧИЛ
                     btn_click_state = BTN_STATE_IDLE;
                 }
             }

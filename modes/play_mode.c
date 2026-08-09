@@ -5,10 +5,44 @@
 #include "sd_storage.h"
 #include <stdio.h>
 
+// Статические переменные состояния PLAY режима
+static int current_selection = 0;      // Индекс выбранного патча
+static bool play_force_redraw = true;  // Флаг принудительной перерисовки
+static int total_items = 0;            // Общее количество патчей (загружается из SD)
 static uint8_t current_bank = 1;
 static uint8_t current_patch = 1;
 static int selected_index = 0; // Индекс выбранной строки в видимом списке (0, 1 или 2)
 
+// ====================================================================
+// ИНИЦИАЛИЗАЦИЯ РЕЖИМА
+// ====================================================================
+void play_mode_init(void) {
+    current_selection = 0;
+    play_force_redraw = true;
+    // ... ваша логика загрузки патчей ...
+    play_mode_render();
+}
+
+// ====================================================================
+// ОБНОВЛЕНИЕ (обработка энкодера и нажатий)
+// ====================================================================
+void play_mode_update(uint16_t touched, int enc_delta) {
+    if (enc_delta != 0) {
+        int max_items = sd_info.file_count;
+        if (max_items == 0) max_items = 1;
+        
+        int new_sel = current_selection + enc_delta;
+        if (new_sel < 0) new_sel = max_items - 1;
+        if (new_sel >= max_items) new_sel = 0;
+        
+        if (new_sel != current_selection) {  // <-- ТОЛЬКО ПРИ РЕАЛЬНОМ ИЗМЕНЕНИИ
+            current_selection = new_sel;
+            printf("[PLAY] Selection: %d\n", current_selection);
+            play_force_redraw = true;
+        }
+    }
+}
+/*
 void play_mode_render(void) {
     ui_draw_statusbar("PLAY MODE", sd_info.is_mounted, 16);
     ui_clear_work_area();
@@ -57,7 +91,16 @@ void play_mode_render(void) {
     draw_bitmap(start_x + 3 * spacing, icon_y, icon_fw, 16, 12, current_theme.bar_text_color, current_theme.bg_color);
     draw_bitmap(start_x + 4 * spacing, icon_y, icon_up, 16, 12, current_theme.bar_text_color, current_theme.bg_color);
 }
-
+*/
+// ====================================================================
+// РЕНДЕРИНГ
+// ====================================================================
+void play_mode_render(void) {
+    // ... ваша логика отрисовки, используя play_force_redraw ...
+    // После отрисовки сбрасываем флаг:
+    play_force_redraw = false;
+}
+/*
 void play_mode_update(uint16_t touched, int enc_delta) {
     // 1. Чтение MIDI...
     uint8_t rx_byte;
@@ -76,3 +119,4 @@ void play_mode_update(uint16_t touched, int enc_delta) {
         }
     }
 }
+*/
