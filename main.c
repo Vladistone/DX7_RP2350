@@ -93,11 +93,11 @@ static void switch_to_next_mode(void) {
             help_render();        
             break;
             
-        case MODE_SYSTEM_CONFIG: {   
-            system_mode_init();   // <-- ИСПРАВЛЕНО
-            // system_mode_render(); // закомментировано, т.к. уже есть внутри
+        case MODE_SYSTEM_CONFIG: //{   
+            //system_mode_init();   // <-- ИСПРАВЛЕНО
+            system_mode_render(); // закомментировано, т.к. уже есть внутри
             break;
-        }
+        //}
         default:
             break;
     }

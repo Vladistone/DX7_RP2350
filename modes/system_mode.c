@@ -405,7 +405,23 @@ void system_mode_render(void) {
         fill_screen(current_theme.bg_color);
         sys_force_redraw = false;
     }
+    // Заголовок
+    char header[32];
+    snprintf(header, sizeof(header), "SYS Config P%d/%d", sys_page_idx + 1, SYS_TOTAL_PAGES);
+    draw_text_scaled(10, 2, header, current_theme.accent_color, current_theme.bg_color, 1);
+    draw_rectangle(0, 14, TFT_WIDTH, 1, current_theme.text_color);
     
+    // Прямой вызов (вместо sys_pages[sys_page_idx]())
+    switch (sys_page_idx) {
+        case 0: draw_sys_p1_hardware_stats(); break;
+        case 1: draw_sys_p3_blackbox_menu(); break;   // <-- ЭТО ДОЛЖНО СРАБОТАТЬ
+        case 2: draw_sys_p2_mpr121_reassign(); break;
+        case 3: draw_sys_p4_project_struct(); break;
+        case 4: draw_sys_p5_pinout(); break;
+        default: break;
+    }
+}
+/*    
     // 2. Заголовок
     char header[32];
     snprintf(header, sizeof(header), "SYS Config P%d/%d", sys_page_idx + 1, SYS_TOTAL_PAGES);
@@ -415,7 +431,7 @@ void system_mode_render(void) {
     // 3. Вызов функции отрисовки страницы
     sys_pages[sys_page_idx]();  // <-- ГЛАВНОЕ: прямой вызов
 }
-
+*/
 void system_mode_update(uint16_t touched, int enc_delta) {
     // 1. Если мы на странице 2 И в режиме редактирования — перехватываем энкодер для маппинга
     if (sys_page_idx == 1 && edit_mode) {
