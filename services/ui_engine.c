@@ -1,15 +1,14 @@
 #include "ui_engine.h"
 #include "modes.h"      
-#include "TFT_dvr.h"     // Видит все функции Блока 6
+#include "TFT_dvr.h"
 #include "sd_storage.h"
 #include <stdio.h>
 
-// Официальные статические трекеры состояний графического ядра
+// Локальные рантайм-трекеры состояний графического ядра
 static AppModeState ui_engine_last_mode = MODE_COUNT;
 static uint8_t ui_engine_last_page = 0xFF;
 
 void ui_clear_work_area(void) {
-    // Чистая очистка рабочей зоны экрана (Оффсет сверху 24px, снизу 16px)
     clear_rect(0, 24, TFT_WIDTH, TFT_HEIGHT - 24 - 16, current_theme.bg_color);
 }
 
@@ -17,57 +16,55 @@ void ui_draw_statusbar(const char* mode_tag, bool sd_status, uint8_t midi_ch) {
     clear_rect(0, 0, TFT_WIDTH, 24, current_theme.bar_bg_color);
     draw_text_scaled(10, 6, mode_tag, current_theme.bar_text_color, current_theme.bar_bg_color, 1);
     
-    // Выводим только маркер ошибки красным цветом, если карты нет
     draw_text_scaled(TFT_WIDTH - 80, 6, "SD:", current_theme.bar_text_color, current_theme.bar_bg_color, 1);
     draw_text_scaled(TFT_WIDTH - 56, 6, sd_status ? "OK" : "-", sd_status ? 0x07E0 : 0xF800, current_theme.bar_bg_color, 1);
 }
 
 void ui_draw_footer(const char* footer_text) {
-    // 1. Начисто очищаем нижнюю плашку подвала высотой 16 пикселей
     clear_rect(0, TFT_HEIGHT - 16, TFT_WIDTH, 16, current_theme.bar_bg_color);
-    
-    // 2. ИСПРАВЛЕНО: Печатаем текст подвала строго через существующую draw_text_scaled!
-    // Отступ X=10, Y вычисляется как верхний край подвала + 2 пикселя оффсета для ровного шрифта 8x12
     draw_text_scaled(10, TFT_HEIGHT - 14, footer_text, current_theme.bar_text_color, current_theme.bar_bg_color, 1);
 }
 
 // ====================================================================
-// ИДЕАЛЬНО ОТПОЛИРОВАННЫЙ КОНВЕЙЕР "НОВЫХ РЕЛЬС" UI_ENGINE
+// СИНХРОННЫЙ КОНВЕЙЕР страниц
 // ====================================================================
+// Внутри файла services/ui_engine.c замените строго эту функцию:
 void ui_render_mode_layout(const char* header, uint8_t cur_page, uint8_t total_pages, bool force_redraw, void (*render_content_cb)(void)) {
-    // Проверяем изменения рантайм-кадра
+    // 1. Вычисляем изменения триггеров на текущем такте процессора
     bool mode_changed = (g_current_mode != ui_engine_last_mode);
     bool page_changed = (cur_page != ui_engine_last_page);
     
-    // ОТРИСОВКА КАДРА: Строго один раз в момент изменений или по принудительному флагу!
+    // 2. ОТРИСОВКА: Строго один раз в момент реальных изменений или по флагу энкодера!
     if (mode_changed || page_changed || force_redraw) {
         ui_engine_last_mode = g_current_mode;
         ui_engine_last_page = cur_page;
         
-        char header_buf[32];
+        // ИСПРАВЛЕНО: Объявляем полноценные строковые массивы в стеке вместо одиночных char
+        char header_buf[48];
         if (total_pages > 1) {
             snprintf(header_buf, sizeof(header_buf), "%s | P.%d", header, cur_page + 1);
         } else {
             snprintf(header_buf, sizeof(header_buf), "%s", header);
         }
         
-        // Перестраиваем каркас и чистим рабочую область
+        // Перестраиваем весь каркас экрана атомарно
         ui_draw_statusbar(header_buf, sd_info.is_mounted, 1);
         ui_clear_work_area();
         
+        // ИСПРАВЛЕНО: Текстовый буфер подвала
         char footer_buf[32];
         snprintf(footer_buf, sizeof(footer_buf), "PAGE %d/%d", cur_page + 1, total_pages);
         ui_draw_footer(footer_buf);
         
-        // Прописываем контент на чистый холст строго ОДИН РАЗ!
+        // ОДИН РАЗ отрисовываем статический контент страницы (текст, таблицы, пинауты)
         if (render_content_cb != NULL) {
             render_content_cb();
         }
-        return; // Кадр построен, выходим! Шина SPI полностью свободна!
+        return; // Кадр построен успешно! Выходим и полностью освобождаем SPI-шину!
     }
 
-    // ДЛЯ ЦИКЛИЧЕСКИХ КАДРОВ (Когда стоим на месте):
-    // Разрешаем сквозной вызов контента БЕЗ очистки экрана СТРОГО только на Первой странице HELP
+    // 3. ЖИВОЙ ЦИКЛИЧЕСКИЙ РАНТАЙМ (ТОЛЬКО ТАМ, ГДЕ ЕСТЬ ДИНАМИКА):
+    // Разрешаем сквозной вызов контента БЕЗ очистки экрана СТРОГО на Первой странице HELP
     // (для теста тачпада MPR121) и Первой странице SYS Config (для замера живого вольтметра)
     if (cur_page == 0 && (g_current_mode == MODE_HELP || g_current_mode == MODE_SYSTEM_CONFIG)) {
         if (render_content_cb != NULL) {
