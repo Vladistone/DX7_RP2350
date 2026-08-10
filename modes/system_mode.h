@@ -14,5 +14,6 @@
 //void draw_mpr121_visual_map(uint16_t touched, int start_x, int start_y);
 void system_render_1(uint16_t mpr_touched_state, float v_sys);
 void system_print(const char* format, ...);
+bool system_mode_needs_redraw(void);
 //void ui_render_mode_layout("SYS Config", sys_page_idx, SYS_TOTAL_PAGES, sys_pages[sys_page_idx]);
 #endif // SYSTEM_MOD_H

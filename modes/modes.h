@@ -2,6 +2,7 @@
 #define MODES_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef enum {
     MODE_PLAYBACK,
@@ -28,6 +29,7 @@ void help_update(uint16_t touched, int enc_delta);
 
 void system_mode_init(void);
 void system_mode_render(void);
-void system_mode_update(uint16_t touched, int enc_delta);
+void system_mode_update(uint16_t touched, int enc_delta, bool sw_held);  // ИСПРАВЛЕНО
+bool system_mode_needs_redraw(void);
 
 #endif // MODES_H

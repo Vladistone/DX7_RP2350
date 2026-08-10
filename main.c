@@ -168,6 +168,7 @@ static void system_init(void) {
     printf("=== Initialization Complete ===\n\n");
 }
 
+
 // Главный цикл приложения (Event Loop)
 int main(void) {
     system_init();
@@ -226,25 +227,14 @@ int main(void) {
             }
         }
 
-        // 4. Передача событий в текущий активный режим через эффективный SWITCH
+        // 4. Передача событий в текущий активный режим
         switch (g_current_mode) {
             case MODE_PLAYBACK:
-                // Передаем реальные клики и шаги в режим Playback
                 play_mode_update(current_touch, enc_delta);
                 break;
 
             case MODE_FILE_SELECT:
-                // Если нумпад выдает мусор на шине, сбрасываем его, оставляя только механику
-                if (pad_raw == 0xFFFF) {
-                    pad_raw = 0;
-                }
-                // Локальный предохранитель первого входа
-                static bool first_run = true;
-                if (first_run) {
-                    current_touch = 0; // Стираем фантомный клик при самом первом проходе режима!
-                    enc_delta = 0;
-                    first_run = false;
-                }
+                // ... логика ...
                 sd_review_update(current_touch, enc_delta);
                 break;
 
@@ -260,7 +250,7 @@ int main(void) {
 
             case MODE_SYSTEM_CONFIG:
                 if (current_touch != last_touch || enc_delta != 0 || enc_single_click) {
-                    system_mode_update(current_touch, enc_delta);
+                    system_mode_update(current_touch, enc_delta, enc_double_click);
                 }
                 break;
             default:
@@ -268,7 +258,41 @@ int main(void) {
         }
 
         last_touch = current_touch;
-
+        sleep_ms(5);
+/*
+        // ============================================================
+        // 5. Рендеринг активного режима (только при необходимости)
+        // ============================================================
+        switch (g_current_mode) {
+            case MODE_PLAYBACK:
+                if (play_mode_needs_redraw()) {   // <-- НУЖЕН ГЕТТЕР
+                    play_mode_render();
+                }
+                break;
+            case MODE_FILE_SELECT:
+                if (sd_review_needs_redraw()) {   // <-- НУЖЕН ГЕТТЕР
+                    sd_review_render();
+                }
+                break;
+            case MODE_USB_MIDI:
+                if (midi_bridge_needs_redraw()) { // <-- НУЖЕН ГЕТТЕР
+                    midi_bridge_render();
+                }
+                break;
+            case MODE_HELP:
+                if (help_mode_needs_redraw()) {   // <-- НУЖЕН ГЕТТЕР
+                    help_render();
+                }
+                break;
+            case MODE_SYSTEM_CONFIG:
+                if (system_mode_needs_redraw()) {
+                    system_mode_render();
+                }
+                break;
+            default:
+                break;
+        }
+*/
         // Короткая задержка для стабильности цикла, опроса I2C и SPI
         sleep_ms(5);
     }
