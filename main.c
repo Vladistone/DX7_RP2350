@@ -184,14 +184,19 @@ int main(void) {
 
     printf("Entering main loop...\n");
     while (true) {
-        // 1. Монолитный опрос всей физической периферии (РАБОТАЕТ ВСЕГДА)
-        int enc_delta         = encoder_get_delta();
-        bool enc_single_click = encoder_is_button_pressed();
+        // 1. Обновление состояния кнопки (ОБЯЗАТЕЛЬНО)
+        encoder_update_sw_state();
+
+        // 2. Чтение событий
+        int enc_delta = encoder_get_delta();
+        bool enc_single_click = encoder_is_single_clicked(); ;
+        bool enc_long_press = encoder_is_long_pressed();
         bool enc_double_click = encoder_is_double_clicked();
 
         // Читаем 12 каналов сенсорного нумпада MPR121
         uint16_t pad_raw      = mpr121_read_touched();
 
+        // 3. Передача в режимы
         // Склеиваем события активации для режима меню (клики и тачи)
         // Объединяем физику: если нажат нумпад или кликнул энкодер — это touched!
         uint16_t current_touch = pad_raw; 
@@ -250,7 +255,7 @@ int main(void) {
 
             case MODE_SYSTEM_CONFIG:
                 if (current_touch != last_touch || enc_delta != 0 || enc_single_click) {
-                    system_mode_update(current_touch, enc_delta, enc_double_click);
+                    system_mode_update(current_touch, enc_delta, enc_long_press);  // <-- ИСПРАВЛЕНО
                 }
                 break;
             default:
@@ -258,42 +263,6 @@ int main(void) {
         }
 
         last_touch = current_touch;
-        sleep_ms(5);
-/*
-        // ============================================================
-        // 5. Рендеринг активного режима (только при необходимости)
-        // ============================================================
-        switch (g_current_mode) {
-            case MODE_PLAYBACK:
-                if (play_mode_needs_redraw()) {   // <-- НУЖЕН ГЕТТЕР
-                    play_mode_render();
-                }
-                break;
-            case MODE_FILE_SELECT:
-                if (sd_review_needs_redraw()) {   // <-- НУЖЕН ГЕТТЕР
-                    sd_review_render();
-                }
-                break;
-            case MODE_USB_MIDI:
-                if (midi_bridge_needs_redraw()) { // <-- НУЖЕН ГЕТТЕР
-                    midi_bridge_render();
-                }
-                break;
-            case MODE_HELP:
-                if (help_mode_needs_redraw()) {   // <-- НУЖЕН ГЕТТЕР
-                    help_render();
-                }
-                break;
-            case MODE_SYSTEM_CONFIG:
-                if (system_mode_needs_redraw()) {
-                    system_mode_render();
-                }
-                break;
-            default:
-                break;
-        }
-*/
-        // Короткая задержка для стабильности цикла, опроса I2C и SPI
         sleep_ms(5);
     }
 

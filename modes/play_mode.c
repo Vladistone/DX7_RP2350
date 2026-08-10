@@ -42,7 +42,10 @@ void play_mode_update(uint16_t touched, int enc_delta) {
         }
     }
 }
-/*
+
+// ====================================================================
+// РЕНДЕРИНГ
+// ====================================================================
 void play_mode_render(void) {
     ui_draw_statusbar("PLAY MODE", sd_info.is_mounted, 16);
     ui_clear_work_area();
@@ -90,33 +93,6 @@ void play_mode_render(void) {
     draw_bitmap(start_x + 2 * spacing, icon_y, icon_stop, 16, 12, current_theme.bar_text_color, current_theme.bg_color);
     draw_bitmap(start_x + 3 * spacing, icon_y, icon_fw, 16, 12, current_theme.bar_text_color, current_theme.bg_color);
     draw_bitmap(start_x + 4 * spacing, icon_y, icon_up, 16, 12, current_theme.bar_text_color, current_theme.bg_color);
-}
-*/
-// ====================================================================
-// РЕНДЕРИНГ
-// ====================================================================
-void play_mode_render(void) {
-    // ... ваша логика отрисовки, используя play_force_redraw ...
-    // После отрисовки сбрасываем флаг:
+
     play_force_redraw = false;
 }
-/*
-void play_mode_update(uint16_t touched, int enc_delta) {
-    // 1. Чтение MIDI...
-    uint8_t rx_byte;
-    while (midi_read_byte(&rx_byte)) {}
-
-    // 2. Обработка вращения энкодера
-    if (enc_delta != 0) {
-        // Перемещаем курсор по списку (от 0 до 2)
-        int new_index = selected_index + enc_delta;
-        if (new_index >= 0 && new_index < 3) {
-            selected_index = new_index;
-            // Также можем менять номер патча в зависимости от строки
-            current_patch = selected_index + 1;
-            midi_send_program_change(0, current_patch - 1);
-            play_mode_render(); // Перерисовываем экран с новым положением подсветки
-        }
-    }
-}
-*/

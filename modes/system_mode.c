@@ -31,48 +31,9 @@ static void draw_sys_p4_project_struct(void);
 static void draw_sys_p5_pinout(void);
 static void handle_mpr121_edit(int enc_delta, bool sw_pressed, bool sw_held);
 
-// Текущий маппинг (индекс кнопки -> действие)
-typedef enum {
-    MPR_ACTION_CURSOR_UP,
-    MPR_ACTION_CURSOR_DN,
-    MPR_ACTION_DISK_UP,
-    MPR_ACTION_DISK_DN,
-    MPR_ACTION_ESC,
-    MPR_ACTION_MODE,
-    MPR_ACTION_SELECT,
-    MPR_ACTION_ENTER,
-    MPR_ACTION_STOP,
-    MPR_ACTION_PLAY,
-    MPR_ACTION_FF,
-    MPR_ACTION_RW,
-    MPR_ACTION_COUNT
-} MprAction;
-
-static const char* action_names[MPR_ACTION_COUNT] = {
-    "CURSOR UP", "CURSOR DW", "DISK UP", "DISK DN",
-    "ESC", "MODE", "SELECT", "ENTER",
-    "STOP", "PLAY", "FF", "RW"
-};
-
-// Текущий маппинг: для каждой кнопки (0..11) храним действие
-static uint8_t mpr_mapping[12] = {
-    MPR_ACTION_CURSOR_UP,
-    MPR_ACTION_CURSOR_DN,
-    MPR_ACTION_DISK_UP,
-    MPR_ACTION_DISK_DN,
-    MPR_ACTION_ESC,
-    MPR_ACTION_MODE,
-    MPR_ACTION_SELECT,
-    MPR_ACTION_ENTER,
-    MPR_ACTION_STOP,
-    MPR_ACTION_PLAY,
-    MPR_ACTION_FF,
-    MPR_ACTION_RW
-};
-
-static uint8_t selected_key = 0;      // 0..11
-static bool edit_mode = false;        // Режим редактирования
-static uint8_t temp_action = 0;       // Временное действие
+//static uint8_t selected_key = 0;      // 0..11
+//static bool edit_mode = false;        // Режим редактирования
+//static uint8_t temp_action = 0;       // Временное действие
 
 // ====================================================================
 // ИНИЦИАЛИЗАЦИЯ ADC (вызывается один раз при входе в режим)
@@ -220,128 +181,153 @@ static void draw_sys_p1_hardware_stats(void) {
 }
 
 // ====================================================================
-// СТРАНИЦА 2: ПЕРЕНАЗНАЧЕНИЕ MPR121 (интерактивная)
+// СТРАНИЦА 2: MPR121 МАППИНГ (ВИЗУАЛЬНАЯ ВЕРСИЯ)
 // ====================================================================
-static void draw_sys_p2_mpr121_reassign(void) {
+
+// Состояние
+static uint8_t mpr_selected = 0;
+static bool mpr_edit_mode = false;
+static uint8_t mpr_temp_action = 0;
+static uint16_t mpr_last_state = 0xFFFF; // Для отслеживания нажатий
+
+// Действия (сокращённые названия для кнопок)
+typedef enum {
+    MPR_ACTION_CUR_UP, MPR_ACTION_CUR_DN, MPR_ACTION_DISK_UP, MPR_ACTION_DISK_DN,
+    MPR_ACTION_ESC, MPR_ACTION_MODE, MPR_ACTION_SELECT, MPR_ACTION_ENTER,
+    MPR_ACTION_STOP, MPR_ACTION_PLAY, MPR_ACTION_FF, MPR_ACTION_RW,
+    MPR_ACTION_COUNT
+} MprAction;
+
+static const char* mpr_short_names[MPR_ACTION_COUNT] = {
+    "CUR UP", "CUR DN", "DSK UP", "DSK DN",
+    "ESC", "MODE", "SEL", "ENT",
+    "STOP", "PLAY", "FF", "RW"
+};
+
+static const char* mpr_full_names[MPR_ACTION_COUNT] = {
+    "CURSOR UP", "CURSOR DN", "DISK UP", "DISK DN",
+    "ESC", "MODE", "SELECT", "ENTER",
+    "STOP", "PLAY", "FF", "RW"
+};
+
+static uint8_t mpr_mapping[12] = {
+    MPR_ACTION_CUR_UP, MPR_ACTION_CUR_DN, MPR_ACTION_DISK_UP, MPR_ACTION_DISK_DN,
+    MPR_ACTION_ESC, MPR_ACTION_MODE, MPR_ACTION_SELECT, MPR_ACTION_ENTER,
+    MPR_ACTION_STOP, MPR_ACTION_PLAY, MPR_ACTION_FF, MPR_ACTION_RW
+};
+
+// ============================================================
+// ОТРИСОВКА (ПО АНАЛОГИИ С DEBUG_LOG_OLD)
+// ============================================================
+static void draw_sys_p2_mpr121(void) {
     char buf[32];
-    int y_pos = 20;
-    const int line_step = 14;
-    const uint16_t COLOR_EDIT = 0x07E0;  // Зелёный
+    int start_y = 30;
+    int box_w = 70;
+    int box_h = 20;
+    int gap_x = 8;
+    int gap_y = 6;
+    const uint16_t COLOR_EDIT = 0x07E0;
+    const uint16_t COLOR_PRESSED = 0xF800; // Красный для нажатой кнопки
 
     // Заголовок
-    ui_draw_text_rel(10, y_pos, "MPR121 MAPPING", current_theme.accent_color, 1);
-    y_pos += line_step + 5;
+    draw_text_scaled(10, 15, "MPR121 MAPPING", current_theme.accent_color, current_theme.bg_color, 1);
 
-    // Отрисовка 12 кнопок (3 колонки по 4 ряда) — проще и читаемее
+    // Отрисовка 12 кнопок (3 колонки x 4 ряда)
     for (int i = 0; i < 12; i++) {
         int col = i % 3;
         int row = i / 3;
-        int x = 10 + col * 75;
-        int y = y_pos + row * 20;
+        int x = 10 + col * (box_w + gap_x);
+        int y = start_y + row * (box_h + gap_y);
 
-        // Определяем цвет фона
-        uint16_t bg_color = current_theme.bg_color;
-        if (i == selected_key) {
-            bg_color = edit_mode ? COLOR_EDIT : current_theme.accent_color;
+        // Проверяем, нажата ли кнопка физически
+        uint16_t touched = mpr121_read_touched();
+        bool is_pressed = (touched & (1 << i)) != 0;
+
+        // Цвет фона
+        uint16_t bg = current_theme.bg_color;
+        if (is_pressed) {
+            bg = COLOR_PRESSED; // Красный для нажатой
+        } else if (i == mpr_selected) {
+            bg = mpr_edit_mode ? COLOR_EDIT : current_theme.accent_color;
         }
 
-        // Простая отрисовка (без ui_draw_card_rel)
-        draw_rectangle(x, y, 70, 18, bg_color);
-        draw_rectangle(x, y, 70, 18, current_theme.text_color);  // Рамка
+        // Рисуем кнопку
+        draw_rectangle(x, y, box_w, box_h, bg);
+        draw_rectangle(x, y, box_w, box_h, current_theme.text_color); // Рамка
 
-        // Текст: "K0:UP"
+        // Текст (сокращённое название)
         uint8_t action = mpr_mapping[i];
-        snprintf(buf, sizeof(buf), "K%d:%.4s", i, action_names[action]);
-        uint16_t text_color = (i == selected_key) ? current_theme.bg_color : current_theme.text_color;
-        draw_text_scaled(x + 4, y + 2, buf, text_color, bg_color, 1);
+        snprintf(buf, sizeof(buf), "K%d:%.5s", i, mpr_short_names[action]);
+        uint16_t text_color = (i == mpr_selected || is_pressed) ? current_theme.bg_color : current_theme.text_color;
+        draw_text_scaled(x + 4, y + 3, buf, text_color, bg, 1);
     }
 
-    // Подсказка внизу
-    if (edit_mode) {
-        ui_draw_text_rel(10, TFT_HEIGHT - 25, "EDIT: Rotate to change, SW to save", COLOR_EDIT, 1);
-    } else {
-        ui_draw_text_rel(10, TFT_HEIGHT - 25, "Hold SW 1s to edit | Rotate: select key", current_theme.text_color, 1);
-    }
-}
-/*
-void system_mode_update(uint16_t touched, int enc_delta) {
-    // 1. Если мы на странице 2 И в режиме редактирования — перехватываем энкодер для маппинга
-    if (sys_page_idx == 1 && edit_mode) {
-        bool sw_pressed = (touched != 0);
-        handle_mpr121_edit(enc_delta, sw_pressed);
-        return;  // Выход, чтобы не менять страницу
-    }
-
-    // 2. Для всех остальных случаев — стандартная смена страниц
-    if (enc_delta != 0) {
-        int next = sys_page_idx + enc_delta;
-        if (next < 0) next = SYS_TOTAL_PAGES - 1;
-        if (next >= SYS_TOTAL_PAGES) next = 0;
-        sys_page_idx = (uint8_t)next;
-        printf("[SYS_PAGE]: %d\n", sys_page_idx + 1);
-        sys_force_redraw = true;
-    }
-
-    // 3. Если мы на странице 2, но НЕ в режиме редактирования — обрабатываем выбор кнопки
-    if (sys_page_idx == 1 && !edit_mode) {
-        bool sw_pressed = (touched != 0);
-        // Выбор кнопки энкодером
-        if (enc_delta != 0) {
-            int new_key = selected_key + enc_delta;
-            if (new_key < 0) new_key = 11;
-            if (new_key > 11) new_key = 0;
-            selected_key = new_key;
-            printf("[MPR] Selected key: %d\n", selected_key);
-            sys_force_redraw = true;
-        }
-        // Вход в режим редактирования по нажатию SW
-        if (sw_pressed) {
-            edit_mode = true;
-            temp_action = mpr_mapping[selected_key];
-            printf("[MPR] Edit mode ON for key %d (%s)\n", selected_key, action_names[temp_action]);
-            sys_force_redraw = true;
-        }
-    }
-}
-*/
-
-static void handle_mpr121_edit(int enc_delta, bool sw_pressed, bool sw_held) {
-    if (edit_mode) {
+    // ============================================================
+    // ФУТЕР С ПОДСКАЗКАМИ (ВСЕГДА ВНИЗУ)
+    // ============================================================
+    int footer_y = TFT_HEIGHT - 30;
+    if (mpr_edit_mode) {
         // Режим редактирования
+        uint8_t action = mpr_temp_action;
+        snprintf(buf, sizeof(buf), "EDIT: K%d -> %s", mpr_selected, mpr_full_names[action]);
+        draw_text_scaled(10, footer_y, buf, COLOR_EDIT, current_theme.bg_color, 1);
+        draw_text_scaled(10, footer_y + 12, "SW: save | Rotate: change action", current_theme.text_color, current_theme.bg_color, 1);
+    } else {
+        // Обычный режим
+        uint8_t action = mpr_mapping[mpr_selected];
+        snprintf(buf, sizeof(buf), "K%d: %s", mpr_selected, mpr_full_names[action]);
+        draw_text_scaled(10, footer_y, buf, current_theme.accent_color, current_theme.bg_color, 1);
+        draw_text_scaled(10, footer_y + 12, "Hold SW(2s)=edit | Rotate=select key", current_theme.text_color, current_theme.bg_color, 1);
+    }
+}
+
+// ============================================================
+// ЛОГИКА (С ВИЗУАЛЬНОЙ ОБРАТНОЙ СВЯЗЬЮ)
+// ============================================================
+static void handle_sys_p2_mpr121(int enc_delta, bool sw_click, bool sw_hold) {
+    // 1. Вход/выход из редактирования по долгому нажатию
+    if (sw_hold) {
+        mpr_edit_mode = !mpr_edit_mode;
+        if (mpr_edit_mode) {
+            mpr_temp_action = mpr_mapping[mpr_selected];
+            printf("[MPR] Edit ON for K%d (current: %s)\n", mpr_selected, mpr_full_names[mpr_temp_action]);
+        } else {
+            printf("[MPR] Edit OFF (saved)\n");
+            // Здесь можно сохранить маппинг в EEPROM/SD
+        }
+        sys_force_redraw = true;
+        return;
+    }
+
+    // 2. Режим редактирования
+    if (mpr_edit_mode) {
+        // Вращение меняет действие
         if (enc_delta != 0) {
-            int new_action = temp_action + enc_delta;
+            int new_action = mpr_temp_action + enc_delta;
             if (new_action < 0) new_action = MPR_ACTION_COUNT - 1;
             if (new_action >= MPR_ACTION_COUNT) new_action = 0;
-            temp_action = new_action;
-            mpr_mapping[selected_key] = temp_action;
-            printf("[MPR] Key %d -> %s\n", selected_key, action_names[temp_action]);
+            mpr_temp_action = new_action;
+            printf("[MPR] K%d -> %s (preview)\n", mpr_selected, mpr_full_names[mpr_temp_action]);
             sys_force_redraw = true;
         }
-        
-        // Выход по короткому нажатию или таймауту
-        if (sw_pressed) {
-            edit_mode = false;
-            printf("[MPR] Edit mode OFF\n");
+        // Короткое нажатие = сохранить и выйти
+        if (sw_click) {
+            mpr_mapping[mpr_selected] = mpr_temp_action;
+            mpr_edit_mode = false;
+            printf("[MPR] K%d saved as %s\n", mpr_selected, mpr_full_names[mpr_temp_action]);
             sys_force_redraw = true;
         }
-    } else {
-        // Обычный режим: выбор кнопки
-        if (enc_delta != 0) {
-            int new_key = selected_key + enc_delta;
-            if (new_key < 0) new_key = 11;
-            if (new_key > 11) new_key = 0;
-            selected_key = new_key;
-            printf("[MPR] Selected key: %d\n", selected_key);
-            sys_force_redraw = true;
-        }
-        
-        // Вход в режим редактирования только по долгому нажатию
-        if (sw_held) {
-            edit_mode = true;
-            temp_action = mpr_mapping[selected_key];
-            printf("[MPR] Edit mode ON for key %d (%s)\n", selected_key, action_names[temp_action]);
-            sys_force_redraw = true;
-        }
+        return; // В режиме редактирования НЕ переключаем страницы
+    }
+
+    // 3. Обычный режим: выбор кнопки
+    if (enc_delta != 0) {
+        int new_key = mpr_selected + enc_delta;
+        if (new_key < 0) new_key = 11;
+        if (new_key > 11) new_key = 0;
+        mpr_selected = new_key;
+        printf("[MPR] Selected K%d (%s)\n", mpr_selected, mpr_full_names[mpr_mapping[mpr_selected]]);
+        sys_force_redraw = true;
     }
 }
 
@@ -350,8 +336,9 @@ static void handle_mpr121_edit(int enc_delta, bool sw_pressed, bool sw_held) {
 // ====================================================================
 static void draw_sys_p3_blackbox_menu(void) {
     printf("[SYS] draw_p3\n");
-    ui_draw_text_rel(10, 40, "PAGE 3 (SIMPLE TEST)", current_theme.text_color, 2);
-
+    // Очищаем только рабочую область (без заголовка)
+    clear_rect(0, 15, TFT_WIDTH, TFT_HEIGHT - 30, current_theme.bg_color);
+    
     ui_draw_text_rel(10, 15, "BLACKBOX / LOGGING:", current_theme.accent_color, 1);
     ui_draw_text_rel(10, 30, "1. USB Trace - ENABLED", current_theme.text_color, 1);
     ui_draw_text_rel(10, 43, "2. SD Card Log - DISABLED", current_theme.text_color, 1);
@@ -364,6 +351,7 @@ static void draw_sys_p3_blackbox_menu(void) {
 // СТРАНИЦА 4: СТРУКТУРА ПРОЕКТА
 // ====================================================================
 static void draw_sys_p4_project_struct(void) {
+    printf("[SYS] draw_p4\n");
     ui_draw_text_rel(10, 15, "PROJECT STRUCTURE:", current_theme.accent_color, 1);
     ui_draw_text_rel(10, 30, "core/    - TFT, Encoder, SD", current_theme.text_color, 1);
     ui_draw_text_rel(10, 43, "modes/   - Play, Help, Sys", current_theme.text_color, 1);
@@ -376,6 +364,7 @@ static void draw_sys_p4_project_struct(void) {
 // СТРАНИЦА 5: PINOUT (АППАРАТНЫЙ СПРАВОЧНИК)
 // ====================================================================
 static void draw_sys_p5_pinout(void) {
+    printf("[SYS] draw_p5\n");
     ui_draw_text_rel(10, 15, "HARDWARE PINOUT:", current_theme.accent_color, 1);
     ui_draw_text_rel(10, 30, "GP4/5  - Rotary Encoder", current_theme.text_color, 1);
     ui_draw_text_rel(10, 43, "GP14   - ENC Switch", current_theme.text_color, 1);
@@ -388,62 +377,108 @@ static void draw_sys_p5_pinout(void) {
 // ====================================================================
 // МАССИВ СТРАНИЦ
 // ====================================================================
-static void (*sys_pages[SYS_TOTAL_PAGES])(void) = {
-    draw_sys_p1_hardware_stats,
-    draw_sys_p3_blackbox_menu,      // <-- Временная замена: простая страница
-    draw_sys_p2_mpr121_reassign,    // <-- Сложная страница отодвинута на позицию 3
-    draw_sys_p4_project_struct,
-    draw_sys_p5_pinout
-};
+//static void (*sys_pages[SYS_TOTAL_PAGES])(void) = {
+//    draw_sys_p1_hardware_stats,
+//    draw_sys_p2_mpr121_reassign,    // <-- Сложная страница отодвинута на позицию 3
+//    draw_sys_p3_blackbox_menu,      // <-- Временная замена: простая страница
+//    draw_sys_p4_project_struct,
+//    draw_sys_p5_pinout
+//};
 
 // ====================================================================
 // ПУБЛИЧНЫЕ ФУНКЦИИ
 // ====================================================================
 void system_mode_render(void) {
-    // 1. Очистка экрана, если нужно
     if (sys_force_redraw) {
         fill_screen(current_theme.bg_color);
         sys_force_redraw = false;
     }
-    // Заголовок
+
     char header[32];
     snprintf(header, sizeof(header), "SYS Config P%d/%d", sys_page_idx + 1, SYS_TOTAL_PAGES);
     draw_text_scaled(10, 2, header, current_theme.accent_color, current_theme.bg_color, 1);
     draw_rectangle(0, 14, TFT_WIDTH, 1, current_theme.text_color);
-    
-    // Прямой вызов (вместо sys_pages[sys_page_idx]())
+
     switch (sys_page_idx) {
         case 0: draw_sys_p1_hardware_stats(); break;
-        case 1: draw_sys_p3_blackbox_menu(); break;   // <-- ЭТО ДОЛЖНО СРАБОТАТЬ
-        case 2: draw_sys_p2_mpr121_reassign(); break;
+        case 1: draw_sys_p2_mpr121(); break;           // НОВОЕ ИМЯ
+        case 2: draw_sys_p3_blackbox_menu(); break;
         case 3: draw_sys_p4_project_struct(); break;
         case 4: draw_sys_p5_pinout(); break;
         default: break;
     }
 }
-/*    
-    // 2. Заголовок
-    char header[32];
-    snprintf(header, sizeof(header), "SYS Config P%d/%d", sys_page_idx + 1, SYS_TOTAL_PAGES);
-    draw_text_scaled(10, 2, header, current_theme.accent_color, current_theme.bg_color, 1);
-    draw_rectangle(0, 14, TFT_WIDTH, 1, current_theme.text_color);
-    
-    // 3. Вызов функции отрисовки страницы
-    sys_pages[sys_page_idx]();  // <-- ГЛАВНОЕ: прямой вызов
-}
-*/
-void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
-    // Определяем короткое нажатие (если touched есть, но sw_held == false)
-    bool sw_pressed = (touched != 0 && !sw_held);
 
-    // Страница 2: обработка маппинга
+void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
+    bool sw_click = (touched != 0 && !sw_held);
+    static bool hold_processed = false;  // Флаг однократной обработки
+
+    // СТРАНИЦА 2: MPR121
     if (sys_page_idx == 1) {
-        handle_mpr121_edit(enc_delta, sw_pressed, sw_held);
-        return;  // Не переключаем страницы на странице 2
+        // Режим редактирования
+        if (mpr_edit_mode) {
+            if (enc_delta != 0) {
+                int new_action = mpr_temp_action + enc_delta;
+                if (new_action < 0) new_action = MPR_ACTION_COUNT - 1;
+                if (new_action >= MPR_ACTION_COUNT) new_action = 0;
+                mpr_temp_action = new_action;
+                printf("[MPR] Action preview: %s\n", mpr_full_names[mpr_temp_action]);
+                sys_force_redraw = true;
+                system_mode_render();
+            }
+            if (sw_click) {
+                mpr_mapping[mpr_selected] = mpr_temp_action;
+                mpr_edit_mode = false;
+                printf("[MPR] Saved K%d -> %s\n", mpr_selected, mpr_full_names[mpr_temp_action]);
+                sys_force_redraw = true;
+                system_mode_render();
+            }
+            return; // Блокируем переключение страниц
+        }
+
+        // Вход в редактирование по долгому нажатию (ОДНОКРАТНО)
+        if (sw_held && !hold_processed) {
+            hold_processed = true;
+            mpr_edit_mode = true;
+            mpr_temp_action = mpr_mapping[mpr_selected];
+            printf("[MPR] Edit ON for K%d\n", mpr_selected);
+            sys_force_redraw = true;
+            system_mode_render();
+            return;
+        }
+
+        // Сброс флага, если кнопка отпущена
+        if (!sw_held && !sw_click) {
+            hold_processed = false;
+        }
+        // выбор кнопки циклическим переходом by ENC SW (Вместо касания MPR121):
+        if (sw_click && !mpr_edit_mode && sys_page_idx == 1) {
+            mpr_selected = (mpr_selected + 1) % 12;
+            printf("[MPR] Selected K%d (click)\n", mpr_selected);
+            sys_force_redraw = true;
+            system_mode_render();
+            return;
+        }
+        // Выбор кнопки по касанию MPR121 (когда заработает)
+        if (touched != 0 && !mpr_edit_mode) {
+            for (int i = 0; i < 12; i++) {
+                if (touched & (1 << i)) {
+                    mpr_selected = i;
+                    printf("[MPR] Selected K%d (touch)\n", i);
+                    sys_force_redraw = true;
+                    system_mode_render();
+                    break;
+                }
+            }
+        }
+
+        // return; - НЕ возвращаем, чтобы энкодер переключал страницы
     }
 
-    // Остальные страницы: переключение по энкодеру
-    if (enc_delta != 0) {
+    // ============================================================
+    // ВСЕ СТРАНИЦЫ (включая страницу 2): переключение по энкодеру
+    // ============================================================
+    if (enc_delta != 0 && !mpr_edit_mode) {  // Только если НЕ в режиме редактирования
         int next = sys_page_idx + enc_delta;
         if (next < 0) next = SYS_TOTAL_PAGES - 1;
         if (next >= SYS_TOTAL_PAGES) next = 0;
@@ -453,19 +488,6 @@ void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
         system_mode_render();
     }
 }
-    // Обработка нажатий на страницах (опционально)
-/*
-    if (touched) {
-        if (sys_page_idx == 1) {
-            // Страница 2: переназначение MPR121
-            printf("[SYS] Reassign MPR121 key\n");
-        } else if (sys_page_idx == 2) {
-            // Страница 3: переключение логов
-            printf("[SYS] Toggle logging\n");
-        }
-    }
-}
-*/
 
 bool system_mode_needs_redraw(void) {
     return sys_force_redraw;
