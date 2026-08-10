@@ -179,83 +179,66 @@ int encoder_get_delta(void) {
 bool encoder_is_button_pressed(void) {
     return !gpio_get(ENC_PIN_SW);
 }
-
 // ====================================================================
-// ДЕТЕКТОР ОДИНОЧНОГО КЛИКА (С ТАЙМАУТОМ)
+// ОБЪЕДИНЁННЫЙ ДЕТЕКТОР КЛИКОВ (СНАЧАЛА ДВОЙНОЙ, ПОТОМ ОДИНОЧНЫЙ)
 // ====================================================================
-bool encoder_is_single_clicked(void) {
-    static bool waiting_for_release = false;
-    static absolute_time_t press_time;
-    bool single_click = false;
-
-    bool current_state = !gpio_get(ENC_PIN_SW); // true = нажата
-
-    if (current_state && !waiting_for_release) {
-        // Начало нажатия
-        waiting_for_release = true;
-        press_time = get_absolute_time();
-    }
-
-    if (!current_state && waiting_for_release) {
-        // Кнопка отпущена — проверяем длительность
-        if (absolute_time_diff_us(press_time, get_absolute_time()) < 500000) { // < 500 мс
-            single_click = true;
-            printf("[SW] Single click\n");
-        } else {
-            printf("[SW] Press too long, not a click\n");
-        }
-        waiting_for_release = false;
-    }
-
-    // Таймаут: если кнопка зажата > 1 сек — сброс
-    if (waiting_for_release && absolute_time_diff_us(press_time, get_absolute_time()) > 1000000) {
-        waiting_for_release = false;
-        printf("[SW] Single click timeout (long press)\n");
-    }
-
-    return single_click;
-}
-
-// ====================================================================
-// ДЕТЕКТОР ДВОЙНОГО КЛИКА (С ОЖИДАНИЕМ ВТОРОГО НАЖАТИЯ)
-// ====================================================================
-bool encoder_is_double_clicked(void) {
-    static bool waiting_for_second = false;
+uint8_t encoder_get_click_type(void) {
+    static enum {
+        CLICK_IDLE,
+        CLICK_WAITING_FOR_SECOND,
+        CLICK_TIMEOUT
+    } state = CLICK_IDLE;
+    
     static absolute_time_t first_click_time;
-    bool double_click = false;
+    uint8_t result = 0;
 
-    // Используем событие клика из автомата (click_reported)
+    // 1. Получаем событие клика из автомата
     static bool prev_click_reported = false;
     bool click_event = click_reported && !prev_click_reported;
     prev_click_reported = click_reported;
 
     if (click_event) {
-        if (!waiting_for_second) {
-            // Первый клик — начинаем ожидание
-            waiting_for_second = true;
-            first_click_time = get_absolute_time();
-            printf("[SW] First click, waiting for second...\n");
-        } else {
-            // Второй клик — проверяем интервал
-            if (absolute_time_diff_us(first_click_time, get_absolute_time()) < 700000) {
-                double_click = true;
-                waiting_for_second = false;
-                printf("[SW] Double click detected!\n");
-            } else {
-                // Интервал превышен — сбрасываем ожидание
-                waiting_for_second = false;
-                printf("[SW] Timeout, waiting reset\n");
-            }
+        click_reported = false; // Сбрасываем флаг
+
+        switch (state) {
+            case CLICK_IDLE:
+                // Первый клик — начинаем ожидание второго
+                state = CLICK_WAITING_FOR_SECOND;
+                first_click_time = get_absolute_time();
+                printf("[SW] First click, waiting...\n");
+                break;
+
+            case CLICK_WAITING_FOR_SECOND:
+                // Второй клик — проверяем интервал
+                if (absolute_time_diff_us(first_click_time, get_absolute_time()) < 700000) {
+                    result = 2; // Двойной клик
+                    state = CLICK_IDLE;
+                    printf("[SW] Double click!\n");
+                } else {
+                    // Интервал превышен — возвращаем одиночный клик
+                    result = 1;
+                    state = CLICK_IDLE;
+                    printf("[SW] Single click (second too late)\n");
+                }
+                break;
+
+            case CLICK_TIMEOUT:
+                // Таймаут — возвращаем одиночный
+                result = 1;
+                state = CLICK_IDLE;
+                printf("[SW] Single click (timeout)\n");
+                break;
         }
     }
 
-    // Таймаут ожидания второго клика (700 мс)
-    if (waiting_for_second && absolute_time_diff_us(first_click_time, get_absolute_time()) > 700000) {
-        waiting_for_second = false;
-        printf("[SW] Double click timeout\n");
+    // 2. Таймаут ожидания второго клика (700 мс)
+    if (state == CLICK_WAITING_FOR_SECOND && 
+        absolute_time_diff_us(first_click_time, get_absolute_time()) > 700000) {
+        state = CLICK_TIMEOUT;
+        // Следующий вызов вернёт одиночный клик
     }
 
-    return double_click;
+    return result;
 }
 
 // ====================================================================

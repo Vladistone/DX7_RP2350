@@ -257,7 +257,7 @@ static void draw_sys_p2_mpr121(void) {
 
         // Текст (сокращённое название)
         uint8_t action = mpr_mapping[i];
-        snprintf(buf, sizeof(buf), "K%d:%.5s", i, mpr_short_names[action]);
+        snprintf(buf, sizeof(buf), "%d:%.5s", i, mpr_short_names[action]);
         uint16_t text_color = (i == mpr_selected || is_pressed) ? current_theme.bg_color : current_theme.text_color;
         draw_text_scaled(x + 4, y + 3, buf, text_color, bg, 1);
     }

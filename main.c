@@ -119,7 +119,7 @@ static void system_init(void) {
     stdio_init_all();
     
     sleep_ms(1000); 
-    printf("=== System Start ===\n");
+    printf("\n    === System Initialization ===\n");
 
     // Вызываем хронометрированный баннер
     print_system_banner(); 
@@ -168,11 +168,9 @@ static void system_init(void) {
     printf("=== Initialization Complete ===\n\n");
 }
 
-
 // Главный цикл приложения (Event Loop)
 int main(void) {
     system_init();
-    printf("System init done.\n");
     
     // Первоначальный рендер экрана Playback
     play_mode_render();
@@ -184,27 +182,29 @@ int main(void) {
 
     printf("Entering main loop...\n");
     while (true) {
+        // 0. Тест: прямое чтение кнопки
+        bool sw_raw = !gpio_get(ENC_PIN_SW);
+        if (sw_raw) {
+            printf("[TEST] SW pressed (raw)\n");
+        }
         // 1. Обновление состояния кнопки (ОБЯЗАТЕЛЬНО)
         encoder_update_sw_state();
 
         // 2. Чтение событий
         int enc_delta = encoder_get_delta();
-        bool enc_single_click = encoder_is_single_clicked(); ;
+        uint8_t click_type = encoder_get_click_type(); // 0=нет, 1=одиночный, 2=двойной
         bool enc_long_press = encoder_is_long_pressed();
-        bool enc_double_click = encoder_is_double_clicked();
 
         // Читаем 12 каналов сенсорного нумпада MPR121
-        uint16_t pad_raw      = mpr121_read_touched();
+        uint16_t pad_raw = mpr121_read_touched();
 
-        // 3. Передача в режимы
-        // Склеиваем события активации для режима меню (клики и тачи)
-        // Объединяем физику: если нажат нумпад или кликнул энкодер — это touched!
+        // 3. Формируем событие касания (touch)
         uint16_t current_touch = pad_raw; 
-        if (enc_single_click) {
-            current_touch |= 0XFFFF; // Взводим биты, если была нажата механика
+        if (click_type == 1) {  // Одиночный клик = касание
+            current_touch |= 0xFFFF;
         }
 
-        // 2. Чтение системной кнопки GP23 (с защитой от дребезга контактов)
+        // 4. Чтение системной кнопки GP23 (с защитой от дребезга)
         bool current_btn_raw = gpio_get(BTN_SYS_MODE);
         bool btn_sys_triggered = false;
 
@@ -216,30 +216,26 @@ int main(void) {
         }
         last_btn_state = current_btn_raw;
 
-        // 3. Реакция на смену режимов (по кнопке или дабл-клику)
-        if (btn_sys_triggered || enc_double_click) {
-            printf("[EVENT] Mode switch triggered!\n");
+        // 5. Реакция на смену режимов (по кнопке GP23 или ДВОЙНОМУ КЛИКУ)
+        if (btn_sys_triggered || click_type == 2) {
+            printf("[EVENT] Mode switch triggered! (GP23=%d, DC=%d)\n", btn_sys_triggered, click_type == 2);
             switch_to_next_mode();
             
-            // Если переключились на режим SD-карты, принудительно инициализируем том
+            // Если переключились на режим SD-карты — сброс
             if (g_current_mode == MODE_FILE_SELECT) {
-                // sd_review_init();
-                // Обнуляем переменные клика прямо в точке смены режима!
-                // Это полностью сотрет "хвост" нажатия от тумблера/энкодера
                 current_touch = 0;
                 enc_delta = 0;
-                enc_single_click = false; // если такой флаг есть
             }
         }
 
-        // 4. Передача событий в текущий активный режим
+        // 6. Передача событий в текущий активный режим
         switch (g_current_mode) {
             case MODE_PLAYBACK:
                 play_mode_update(current_touch, enc_delta);
                 break;
 
             case MODE_FILE_SELECT:
-                // ... логика ...
+                if (pad_raw == 0xFFFF) pad_raw = 0;
                 sd_review_update(current_touch, enc_delta);
                 break;
 
@@ -248,16 +244,17 @@ int main(void) {
                 break;
 
             case MODE_HELP:
-                if (current_touch != last_touch || enc_delta != 0 || enc_single_click) {
+                if (current_touch != last_touch || enc_delta != 0 || click_type == 1) {
                     help_update(current_touch, enc_delta);
                 }
                 break;
 
             case MODE_SYSTEM_CONFIG:
-                if (current_touch != last_touch || enc_delta != 0 || enc_single_click) {
-                    system_mode_update(current_touch, enc_delta, enc_long_press);  // <-- ИСПРАВЛЕНО
+                if (current_touch != last_touch || enc_delta != 0 || click_type == 1) {
+                    system_mode_update(current_touch, enc_delta, enc_long_press);
                 }
                 break;
+
             default:
                 break;
         }
