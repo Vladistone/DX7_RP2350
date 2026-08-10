@@ -182,11 +182,6 @@ int main(void) {
 
     printf("Entering main loop...\n");
     while (true) {
-        // 0. Тест: прямое чтение кнопки
-        bool sw_raw = !gpio_get(ENC_PIN_SW);
-        if (sw_raw) {
-            printf("[TEST] SW pressed (raw)\n");
-        }
         // 1. Обновление состояния кнопки (ОБЯЗАТЕЛЬНО)
         encoder_update_sw_state();
 
