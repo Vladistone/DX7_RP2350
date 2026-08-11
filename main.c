@@ -94,8 +94,7 @@ static void switch_to_next_mode(void) {
             break;
             
         case MODE_SYSTEM_CONFIG: //{   
-            //system_mode_init();   // <-- ИСПРАВЛЕНО
-            system_mode_render(); // закомментировано, т.к. уже есть внутри
+            system_mode_init();
             break;
         //}
         default:
@@ -245,7 +244,7 @@ int main(void) {
                 break;
 
             case MODE_SYSTEM_CONFIG:
-                if (current_touch != last_touch || enc_delta != 0 || click_type == 1) {
+                if (current_touch != last_touch || enc_delta != 0 || click_type == 1 || enc_long_press) {
                     system_mode_update(current_touch, enc_delta, enc_long_press);
                 }
                 break;
