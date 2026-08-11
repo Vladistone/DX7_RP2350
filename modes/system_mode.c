@@ -4,6 +4,7 @@
 #include "debug_log.h"  
 #include "TFT_dvr.h"    
 #include "sd_storage.h" 
+#include "ff.h"
 #include "pico/stdlib.h"
 #include "hardware/clocks.h"
 #include "hardware/adc.h"   // Подключаем АЦП из SDK для аппаратного замера
@@ -12,6 +13,7 @@
 #include "hardware/regs/sysinfo.h" // КРИТИЧНО: Прямой доступ к регистрам кремния Raspberry Pi
 #include <stdio.h>      
 #include <stdarg.h>
+#include <string.h>
 
 static uint8_t sys_page_idx = 0;
 static bool sys_force_redraw = true;
@@ -19,12 +21,38 @@ static bool adc_initialized = false;
 static float cached_vin = 5.0f;
 static bool vin_measured = false;
 #define SYS_TOTAL_PAGES 5
-static int selected_item = 1;
+static int selected_item = 0; // курсор R.ENC на текущей странице
 // Состояние
 static uint8_t mpr_selected = 0;
 static bool mpr_edit_mode = false;
 static uint8_t mpr_temp_action = 0;
 static uint16_t mpr_last_state = 0xFFFF; // Для отслеживания нажатий
+
+// Blackbox toggles (стр.3)
+static bool bb_usb_trace = true;
+static bool bb_sd_log = false;
+static bool bb_midi_mon = false;
+static bool bb_debug_chrono = true;
+
+static const uint8_t sys_page_item_count[SYS_TOTAL_PAGES] = {
+    6,  // P1: hardware lines
+    12, // P2: MPR keys
+    4,  // P3: blackbox items
+    5,  // P4: project dirs
+    6   // P5: pinout lines
+};
+
+static int sys_wrap_index(int idx, int delta, int count) {
+    if (count <= 0) return 0;
+    int n = idx + delta;
+    while (n < 0) n += count;
+    while (n >= count) n -= count;
+    return n;
+}
+
+static uint16_t sys_sel_color(int line_idx) {
+    return (selected_item == line_idx) ? current_theme.accent_color : current_theme.text_color;
+}
 
 // ** ПРОТОТИПЫ ФУНКЦИЙ (ДОБАВЛЕНО) **
 static void system_mode_measure_voltage(void);
@@ -35,6 +63,10 @@ static void draw_sys_p3_blackbox_menu(void);
 static void draw_sys_p4_project_struct(void);
 static void draw_sys_p5_pinout(void);
 static void handle_mpr121_edit(int enc_delta, bool sw_pressed, bool sw_held);
+static void load_mpr121_mapping(void);
+static void save_mpr121_mapping(void);
+
+#define MPR121_MAP_PATH "map/mpr121.map"
 
 // Действия (сокращённые названия для кнопок)
 typedef enum {
@@ -83,6 +115,7 @@ void system_mode_init(void) {
     sys_force_redraw = true;
     mpr121_init();
     printf("[INIT] MPR121 Touch... %s\n", (mpr121_read_touched() != 0) ? "OK" : "FAIL");
+    load_mpr121_mapping();
     
     if (!adc_initialized) {
         adc_init();
@@ -226,11 +259,11 @@ static void draw_sys_p1_hardware_stats(void) {
     // ====================================================================
 static void draw_sys_p2_mpr121_reassign(void) {
 
-    const uint16_t COLOR_BTN_BG   = current_theme.bar_bg_color; //0xAD9B; // Исходный серый цвет фона кубика
-    const uint16_t COLOR_ACTIVE   = 0x07FF; // Яркий мятно-бирюзовый цвет
-    const uint16_t COLOR_EDIT     = 0xF800; // Чистый зеленый для режима редактирования
-    const uint16_t COLOR_CHANGED  = 0x07E0; // КРАСНЫЙ для изменённых параметров
-    const uint16_t COLOR_BTN_TEXT = 0xFFFF; // ЧЁРНЫЙ цвет (RGB565 Black)
+    const uint16_t COLOR_BTN_BG   = current_theme.bar_bg_color; // серый фон кубика
+    const uint16_t COLOR_ACTIVE   = 0x07FF; // бирюзовый (выбор / press)
+    const uint16_t COLOR_EDIT     = 0xF800; // красный (режим редактирования)
+    const uint16_t COLOR_CHANGED  = 0x07E0; // зелёный (изменено и сохранено)
+    const uint16_t COLOR_BTN_TEXT = 0xFFFF; // белый текст
 
     int start_x = 10;
     int start_y = 55;
@@ -254,55 +287,47 @@ static void draw_sys_p2_mpr121_reassign(void) {
         bool is_editing = (is_selected && mpr_edit_mode);
         bool is_changed = mpr_changed[i];
 
-        // Расчёт цветовой схемы по вашей матрице инверсии
         uint16_t bg_color   = COLOR_BTN_BG;
-        uint16_t text_color = COLOR_BTN_TEXT; 
+        uint16_t text_color = COLOR_BTN_TEXT;
+        uint16_t border_color = COLOR_BTN_TEXT;
 
-        if (is_selected && !is_pressed) {
-            bg_color   = COLOR_BTN_BG; // Серый кубик
-            text_color = COLOR_ACTIVE; // БИРЮЗОВЫЙ шрифт
+        if (is_pressed && !is_editing) {
+            bg_color   = COLOR_ACTIVE;
+            text_color = COLOR_BTN_TEXT;
+        } else if (is_editing) {
+            bg_color   = COLOR_EDIT;       // красный фон редактируемой кнопки
+            text_color = COLOR_BTN_TEXT;
+            border_color = COLOR_EDIT;
+        } else if (is_changed) {
+            // Зелёный после save — даже если кнопка остаётся selected
+            text_color = COLOR_CHANGED;
+            border_color = COLOR_CHANGED;
+            if (is_selected) {
+                bg_color = COLOR_BTN_BG;
+            }
+        } else if (is_selected) {
+            text_color = COLOR_ACTIVE;     // бирюзовый шрифт на выбранной
         }
 
-        if (is_pressed) {
-            bg_color   = COLOR_ACTIVE; // БИРЮЗОВЫЙ кубик
-            text_color = COLOR_BTN_TEXT; // ЧЁРНЫЙ шрифт
-        }
-        
-        if (is_editing) {
-            bg_color = COLOR_EDIT;          // КРАСНЫЙ фон
-            text_color = COLOR_BTN_TEXT;    // ЧЁРНЫЙ текст
-        } else if (is_changed && !is_selected && !is_pressed) {
-            text_color = COLOR_CHANGED;     // ЗЕЛЁНЫЙ текст (изменено)
-        }
-
-        if (is_changed && !is_selected && !is_pressed && !is_editing) {
-            text_color = COLOR_CHANGED; // КРАСНЫЙ шрифт
-        }
-
-        // Отрисовка подложки кубика
         clear_rect(x, y, box_w, box_h, bg_color);
-        
-        // Отрисовка рамки кубика (Толщина 1px через clear_rect)
-        clear_rect(x, y, box_w, 1, COLOR_BTN_TEXT);             
-        clear_rect(x, y + box_h - 1, box_w, 1, COLOR_BTN_TEXT); 
-        clear_rect(x, y, 1, box_h, COLOR_BTN_TEXT);             
-        clear_rect(x + box_w - 1, y, 1, box_h, COLOR_BTN_TEXT); 
 
-        // Форматирование подписи команды синтезатора
-        char buf[8]; // Массив под 3 символа + нулевой терминатор
-        uint8_t action = mpr_mapping[i];
+        clear_rect(x, y, box_w, 1, border_color);
+        clear_rect(x, y + box_h - 1, box_w, 1, border_color);
+        clear_rect(x, y, 1, box_h, border_color);
+        clear_rect(x + box_w - 1, y, 1, box_h, border_color);
+
+        // В edit — live preview из mpr_temp_action, иначе сохранённый mapping
+        char buf[8];
+        uint8_t action = is_editing ? mpr_temp_action : mpr_mapping[i];
         snprintf(buf, sizeof(buf), "%.6s", mpr_short_names[action]);
-        
-        // Вывод шрифта строго внутри кубика
         draw_text_scaled(x + 6, y + 6, buf, text_color, bg_color, 1);
     }
 
-    // Подвал страницы (подсказки)
-    int footer_y = TFT_HEIGHT - 30;
+    // Одна строка в системный footer (16px) — перезаписывает "PAGE x/y"
     if (mpr_edit_mode) {
-        draw_text_scaled(10, footer_y, "EDIT: Rotate to change, SW to save", COLOR_EDIT, current_theme.bg_color, 1);
+        ui_draw_footer("EDIT ENC=CHG |SW=SAVE |HoldSW=ESC");
     } else {
-        draw_text_scaled(10, footer_y, "Hold SW(2s)=edit | Short click=select", current_theme.text_color, current_theme.bg_color, 1);
+        ui_draw_footer("HoldSW=EDIT |SW=NEXT |ENC=PAGE/5");
     }
 }
 
@@ -372,18 +397,9 @@ void system_mode_render(void) {
         sys_force_redraw,              // Флаг перерисовки
         sys_pages[sys_page_idx]        // Указатель на функцию отрисовки страницы
     );
-    
-    // Сбрасываем флаг после отрисовки
-    sys_force_redraw = false;
 
-    switch (sys_page_idx) {
-        case 0: draw_sys_p1_hardware_stats(); break;
-        case 1: draw_sys_p2_mpr121_reassign(); break;
-        case 2: draw_sys_p3_blackbox_menu(); break;
-        case 3: draw_sys_p4_project_struct(); break;
-        case 4: draw_sys_p5_pinout(); break;
-        default: break;
-    }
+    // Сбрасываем флаг после отрисовки (как в help_mode.c)
+    sys_force_redraw = false;
 }
 
 void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
@@ -425,6 +441,7 @@ void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
                     mpr_mapping[mpr_selected] = mpr_temp_action;
                     mpr_changed[mpr_selected] = true;
                     printf("[MPR] K%d saved as %s (CHANGED)\n", mpr_selected, mpr_full_names[mpr_temp_action]);
+                    save_mpr121_mapping();
                 } else {
                     printf("[MPR] K%d unchanged\n", mpr_selected);
                 }
@@ -478,8 +495,67 @@ void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
     }
 }
 
-void save_mpr121_mapping(void) {
-    // Сохранить mpr_mapping в файл "mpr121.map" на SD
-    // Или в EEPROM (если есть)
-    printf("[MPR] Mapping saved\n");
+static void load_mpr121_mapping(void) {
+    if (!sd_info.is_mounted) {
+        printf("[MPR] No SD — using default mapping\n");
+        return;
+    }
+
+    FIL f;
+    FRESULT res = f_open(&f, MPR121_MAP_PATH, FA_READ);
+    if (res != FR_OK) {
+        printf("[MPR] %s not found (using defaults)\n", MPR121_MAP_PATH);
+        return;
+    }
+
+    UINT br = 0;
+    uint8_t buf[12];
+    res = f_read(&f, buf, sizeof(buf), &br);
+    f_close(&f);
+
+    if (res != FR_OK || br != sizeof(buf)) {
+        printf("[MPR] Load failed (res=%d, br=%u)\n", res, br);
+        return;
+    }
+
+    for (int i = 0; i < 12; i++) {
+        if (buf[i] >= MPR_ACTION_COUNT) {
+            printf("[MPR] Invalid action K%d=%u — keep defaults\n", i, buf[i]);
+            return;
+        }
+    }
+
+    memcpy(mpr_mapping, buf, sizeof(mpr_mapping));
+    memset(mpr_changed, 0, sizeof(mpr_changed));
+    printf("[MPR] Loaded mapping from %s\n", MPR121_MAP_PATH);
+}
+
+static void save_mpr121_mapping(void) {
+    if (!sd_info.is_mounted) {
+        printf("[MPR] Mapping saved in RAM only (no SD)\n");
+        return;
+    }
+
+    FRESULT res = f_mkdir("map");
+    if (res != FR_OK && res != FR_EXIST) {
+        printf("[MPR] mkdir map failed: %d\n", res);
+        return;
+    }
+
+    FIL f;
+    res = f_open(&f, MPR121_MAP_PATH, FA_WRITE | FA_CREATE_ALWAYS);
+    if (res != FR_OK) {
+        printf("[MPR] Open %s failed: %d\n", MPR121_MAP_PATH, res);
+        return;
+    }
+
+    UINT bw = 0;
+    res = f_write(&f, mpr_mapping, sizeof(mpr_mapping), &bw);
+    f_close(&f);
+
+    if (res == FR_OK && bw == sizeof(mpr_mapping)) {
+        printf("[MPR] Mapping saved to %s\n", MPR121_MAP_PATH);
+    } else {
+        printf("[MPR] Write failed (res=%d, bw=%u)\n", res, bw);
+    }
 }
