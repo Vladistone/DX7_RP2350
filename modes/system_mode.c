@@ -228,8 +228,8 @@ static void draw_sys_p2_mpr121_reassign(void) {
 
     const uint16_t COLOR_BTN_BG   = current_theme.bar_bg_color; //0xAD9B; // Исходный серый цвет фона кубика
     const uint16_t COLOR_ACTIVE   = 0x07FF; // Яркий мятно-бирюзовый цвет
-    const uint16_t COLOR_EDIT     = 0x07E0; // Чистый зеленый для режима редактирования
-    const uint16_t COLOR_CHANGED  = 0xF800; // КРАСНЫЙ для изменённых параметров
+    const uint16_t COLOR_EDIT     = 0xF800; // Чистый зеленый для режима редактирования
+    const uint16_t COLOR_CHANGED  = 0x07E0; // КРАСНЫЙ для изменённых параметров
     const uint16_t COLOR_BTN_TEXT = 0xFFFF; // ЧЁРНЫЙ цвет (RGB565 Black)
 
     int start_x = 10;
@@ -269,8 +269,10 @@ static void draw_sys_p2_mpr121_reassign(void) {
         }
         
         if (is_editing) {
-            bg_color   = COLOR_EDIT;   // Зелёный кубик
-            text_color = COLOR_BTN_TEXT; // ЧЁРНЫЙ шрифт
+            bg_color = COLOR_EDIT;          // КРАСНЫЙ фон
+            text_color = COLOR_BTN_TEXT;    // ЧЁРНЫЙ текст
+        } else if (is_changed && !is_selected && !is_pressed) {
+            text_color = COLOR_CHANGED;     // ЗЕЛЁНЫЙ текст (изменено)
         }
 
         if (is_changed && !is_selected && !is_pressed && !is_editing) {
@@ -295,7 +297,7 @@ static void draw_sys_p2_mpr121_reassign(void) {
         draw_text_scaled(x + 6, y + 6, buf, text_color, bg_color, 1);
     }
 
-    // Подвал страницы
+    // Подвал страницы (подсказки)
     int footer_y = TFT_HEIGHT - 30;
     if (mpr_edit_mode) {
         draw_text_scaled(10, footer_y, "EDIT: Rotate to change, SW to save", COLOR_EDIT, current_theme.bg_color, 1);
@@ -303,7 +305,6 @@ static void draw_sys_p2_mpr121_reassign(void) {
         draw_text_scaled(10, footer_y, "Hold SW(2s)=edit | Short click=select", current_theme.text_color, current_theme.bg_color, 1);
     }
 }
-
 
 // ====================================================================
 // СТРАНИЦА 3: СЕРВИСНОЕ МЕНЮ ЛОГОВ
@@ -388,46 +389,93 @@ void system_mode_render(void) {
 void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
     bool sw_click = (touched != 0 && !sw_held);
 
-    // СТРАНИЦА 2: MPR121
+    // ============================================================
+    // СТРАНИЦА 2: MPR121 (ВСЯ ЛОГИКА)
+    // ============================================================
     if (sys_page_idx == 1) {
+        // 1. Долгое нажатие: вход/выход из режима редактирования
         if (sw_held) {
             mpr_edit_mode = !mpr_edit_mode;
+            if (mpr_edit_mode) {
+                mpr_temp_action = mpr_mapping[mpr_selected];
+                printf("[MPR] Edit ON for K%d (current: %s)\n", mpr_selected, mpr_full_names[mpr_temp_action]);
+            } else {
+                printf("[MPR] Edit OFF (canceled)\n");
+            }
             sys_force_redraw = true;
             system_mode_render();
-            return;
+            return; // Блокируем переключение страниц
         }
-        
-        if (sw_click && !mpr_edit_mode) {
+
+        // 2. Режим редактирования
+        if (mpr_edit_mode) {
+            // Вращение меняет действие (предпросмотр)
+            if (enc_delta != 0) {
+                int new_action = mpr_temp_action + enc_delta;
+                if (new_action < 0) new_action = MPR_ACTION_COUNT - 1;
+                if (new_action >= MPR_ACTION_COUNT) new_action = 0;
+                mpr_temp_action = new_action;
+                printf("[MPR] K%d -> %s (preview)\n", mpr_selected, mpr_full_names[mpr_temp_action]);
+                sys_force_redraw = true;
+                system_mode_render();
+            }
+            // Короткое нажатие = сохранить и выйти
+            if (sw_click) {
+                if (mpr_mapping[mpr_selected] != mpr_temp_action) {
+                    mpr_mapping[mpr_selected] = mpr_temp_action;
+                    mpr_changed[mpr_selected] = true;
+                    printf("[MPR] K%d saved as %s (CHANGED)\n", mpr_selected, mpr_full_names[mpr_temp_action]);
+                } else {
+                    printf("[MPR] K%d unchanged\n", mpr_selected);
+                }
+                mpr_edit_mode = false;
+                sys_force_redraw = true;
+                system_mode_render();
+            }
+            return; // В режиме редактирования НЕ переключаем страницы
+        }
+
+        // 3. Обычный режим (НЕ редактирование)
+        // Короткое нажатие = выбор следующей кнопки
+        if (sw_click) {
             mpr_selected = (mpr_selected + 1) % 12;
+            printf("[MPR] Selected K%d (%s)\n", mpr_selected, mpr_full_names[mpr_mapping[mpr_selected]]);
             sys_force_redraw = true;
             system_mode_render();
-            return;
+            // НЕ возвращаемся, чтобы энкодер мог переключить страницу
         }
-        
-        if (mpr_edit_mode && enc_delta != 0) {
-            // ... изменение действия ...
-            sys_force_redraw = true;
-            system_mode_render();
-            return;
-        }
-        
-        return; // Не переключаем страницы на странице 2
+
+        // Если ничего не произошло — позволяем энкодеру переключать страницы
+        // НЕТ return здесь!
     }
 
-    // ОСТАЛЬНЫЕ СТРАНИЦЫ: переключение по энкодеру
-    if (enc_delta != 0) {
-        int next = sys_page_idx + enc_delta;
-        if (next < 0) next = SYS_TOTAL_PAGES - 1;
-        if (next >= SYS_TOTAL_PAGES) next = 0;
-        sys_page_idx = (uint8_t)next;
-        printf("[SYS_PAGE]: %d\n", sys_page_idx + 1);
+    // ============================================================
+    // СТРАНИЦА 3: Debug Log (переключение по долгому нажатию)
+    // ============================================================
+    if (sys_page_idx == 2 && sw_held) {
+        static bool debug_log_enabled = false;
+        debug_log_enabled = !debug_log_enabled;
+        printf("[SYS] Debug Log %s\n", debug_log_enabled ? "ENABLED" : "DISABLED");
         sys_force_redraw = true;
         system_mode_render();
+        return; // Блокируем переключение страниц
     }
-}
 
-bool system_mode_needs_redraw(void) {
-    return sys_force_redraw;
+    // ============================================================
+    // ВСЕ СТРАНИЦЫ (включая страницу 2, если не в режиме редактирования)
+    // ============================================================
+    if (enc_delta != 0) {
+        // Проверяем, что мы НЕ на странице 2 ИЛИ НЕ в режиме редактирования
+        if (!(sys_page_idx == 1 && mpr_edit_mode)) {
+            int next = sys_page_idx + enc_delta;
+            if (next < 0) next = SYS_TOTAL_PAGES - 1;
+            if (next >= SYS_TOTAL_PAGES) next = 0;
+            sys_page_idx = (uint8_t)next;
+            printf("[SYS_PAGE]: %d\n", sys_page_idx + 1);
+            sys_force_redraw = true;
+            system_mode_render();
+        }
+    }
 }
 
 void save_mpr121_mapping(void) {
