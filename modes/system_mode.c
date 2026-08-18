@@ -1,40 +1,47 @@
-#include "hw_config.h"
-#include "modes.h"      
-#include "ui_engine.h"  
-#include "debug_log.h"  
-#include "TFT_dvr.h"    
-#include "sd_storage.h" 
-#include "ff.h"
+// Аппаратные драйверы
+#include "hw_config.h"       // Пины, конфигурация
+#include "TFT_dvr.h"         // Работа с дисплеем
+#include "numpad_dvr.h"      // MPR121 сенсорная панель
+#include "encoder_dvr.h"     // Энкодер и его SW (для click_type)
+// Системные сервисы
+#include "modes.h"    
+#include "ui_engine.h"       // UI функции (statusbar, footer)
+#include "sd_storage.h"      // SD карта
+#include "debug_log.h"       // Логирование
+// Файловая система
+#include "ff.h"              // FatFS  
+// SDK Pico
 #include "pico/stdlib.h"
 #include "hardware/clocks.h"
 #include "hardware/adc.h"   // Подключаем АЦП из SDK для аппаратного замера
-#include "numpad_dvr.h"     // Подключаем маппинг кнопок MPR121
-#include "pico/binary_info.h" // Для чтения аппаратных хэшей бинарника
-#include "hardware/regs/sysinfo.h" // КРИТИЧНО: Прямой доступ к регистрам кремния Raspberry Pi
+#include "hardware/regs/sysinfo.h"
+#include "pico/binary_info.h"
+// Стандартные библиотеки
 #include <stdio.h>      
 #include <stdarg.h>
 #include <string.h>
 
 // ============ ПЕРЕМЕННЫЕ ============
+static uint8_t sys_page_idx = 0;
 static int selected_item = 1; // курсор R.ENC на текущей странице
 static bool mpr_changed[12] = {false};
-static uint8_t sys_page_idx = 0;
 static bool sys_force_redraw = true;
 static bool adc_initialized = false;
 static float cached_vin = 5.0f;
 static bool vin_measured = false;
 #define SYS_TOTAL_PAGES 5
 static uint8_t mpr_selected = 0;
-static bool mpr_edit_mode = false;
 static uint8_t mpr_temp_action = 0;
 static uint16_t mpr_last_state = 0xFFFF;
+static bool mpr_edit_mode = false;
+// Blackbox toggles (стр.3)
 static int blackbox_selected_item = 0;
 #define BLACKBOX_ITEMS 4
-// Blackbox toggles (стр.3)
 static bool bb_usb_trace = true;
 static bool bb_sd_log = false;
 static bool bb_midi_mon = false;
 static bool bb_debug_chrono = true;
+static bool bb_edit_mode = false;  // Режим редактирования для Blackbox
 
 static const uint8_t sys_page_item_count[SYS_TOTAL_PAGES] = {
     6,  // P1: hardware lines
@@ -378,83 +385,13 @@ static void draw_sys_p1_hardware_stats(void) {
         // Отрисовка всех кубиков (обновляется через update_mpr121_display)
         update_mpr121_display();
         
-        // Footer через ui_engine API
-        //if (mpr_edit_mode) {
-        //    ui_draw_footer("EDIT: ENC=change, SW=save");
-        //} else {
-        //    ui_draw_footer("ENC: select | SW=edit | Hold SW: exit");
-        //}
-    }
-/*
-    // НОВАЯ ФУНКЦИЯ: Обновление ТОЛЬКО кубиков MPR121
-    static void update_mpr121_display(void) {
-        const uint16_t COLOR_BTN_BG   = current_theme.bar_bg_color;
-        const uint16_t COLOR_ACTIVE   = 0x07FF;
-        const uint16_t COLOR_EDIT     = 0x07E0;
-        const uint16_t COLOR_CHANGED  = 0xF800;
-        const uint16_t COLOR_BTN_TEXT = 0xFFFF;
-    
-        int start_x = 10;
-        int start_y = 35;
-        int box_w = 70;
-        int box_h = 24;
-        int gap = 5;
-    
-        uint16_t touched = mpr121_read_touched();
-    
-        for (int i = 0; i < 12; i++) {
-            int col = i % 4;
-            int row = i / 4;
-            int x = start_x + col * (box_w + gap);
-            int y = start_y + row * (box_h + gap);
-    
-            bool is_pressed = (touched & (1 << i)) != 0;
-            bool is_selected = (i == mpr_selected);
-            bool is_editing = (is_selected && mpr_edit_mode);
-            bool is_changed = mpr_changed[i];
-    
-            // Расчёт цветовой схемы
-            uint16_t bg_color   = COLOR_BTN_BG;
-            uint16_t text_color = COLOR_BTN_TEXT; 
-    
-            if (is_selected && !is_pressed) {
-                bg_color   = COLOR_BTN_BG;  
-                text_color = COLOR_ACTIVE;
-            }
-    
-            if (is_pressed) {
-                bg_color   = COLOR_ACTIVE;
-                text_color = COLOR_BTN_TEXT;
-            }
-            
-            if (is_editing) {
-                bg_color   = COLOR_EDIT;
-                text_color = COLOR_BTN_TEXT;
-            }
-    
-            if (is_changed && !is_selected && !is_pressed && !is_editing) {
-                text_color = COLOR_CHANGED;
-            }
-    
-            // Отрисовка подложки кубика
-            clear_rect(x, y, box_w, box_h, bg_color);
-            
-            // Отрисовка рамки
-            clear_rect(x, y, box_w, 1, COLOR_BTN_TEXT);             
-            clear_rect(x, y + box_h - 1, box_w, 1, COLOR_BTN_TEXT); 
-            clear_rect(x, y, 1, box_h, COLOR_BTN_TEXT);             
-            clear_rect(x + box_w - 1, y, 1, box_h, COLOR_BTN_TEXT); 
-    
-            // Форматирование подписи
-            char buf[8];
-            uint8_t action = mpr_mapping[i];
-            snprintf(buf, sizeof(buf), "%.6s", mpr_short_names[action]);
-            
-            // Вывод текста
-            draw_text_scaled(x + 6, y + 6, buf, text_color, bg_color, 1);
+        if (mpr_edit_mode) {
+            ui_draw_footer("EDIT: ENC=change | HELD=cancel | DBL=save");
+        } else {
+            ui_draw_footer("CLICK=next | HELD=edit | DBL=mode");
         }
     }
-*/
+
     // ============================================================
     // СТРАНИЦА 3: Blackbox меню (специальная логика)
     // ============================================================
@@ -474,8 +411,11 @@ static void draw_sys_p1_hardware_stats(void) {
         ui_draw_text_rel(10, 68, "3. MIDI Monitor:", current_theme.text_color, 1);
         ui_draw_text_rel(10, 82, "4. Debug Chrono:", current_theme.text_color, 1);
 
-        // Footer через ui_engine API
-        //ui_draw_footer("ENC: scroll | SW: toggle");
+        if (bb_edit_mode) {
+            ui_draw_footer("EDIT: ENC=toggle | HELD=cancel | DBL=save");
+        } else {
+            ui_draw_footer("CLICK=next | HELD=edit | DBL=mode");
+        }
 
         // Динамическая часть - состояние items (обновляется отдельно)
         update_blackbox_items_display();
@@ -486,12 +426,12 @@ static void draw_sys_p1_hardware_stats(void) {
 // ====================================================================
 static void draw_sys_p4_project_struct(void) {
     printf("[SYS] draw_p4\n");
-    ui_draw_text_rel(10, 15, "PROJECT STRUCTURE:", current_theme.accent_color, 1);
-    ui_draw_text_rel(10, 30, "core/    - TFT, Encoder, SD", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 43, "modes/   - Play, Help, Sys", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 15, "PROJECT STRUCTURE:", current_theme.accent_color, 2);
+    ui_draw_text_rel(10, 30, "core/    - TFT, ENC, NUM PAD, SD", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 43, "modes/   - PLAY, HELP, SYS modes", current_theme.text_color, 1);
     ui_draw_text_rel(10, 56, "services/- UI, MIDI, SysEx", current_theme.text_color, 1);
     ui_draw_text_rel(10, 69, "lib/     - FatFS, MPR121", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 82, "mapping/ - CC->SysEx map", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 82, "mapping/ - CC->SysEx map TABLE", current_theme.text_color, 1);
 }
 
 // ====================================================================
@@ -499,13 +439,27 @@ static void draw_sys_p4_project_struct(void) {
 // ====================================================================
 static void draw_sys_p5_pinout(void) {
     printf("[SYS] draw_p5\n");
-    ui_draw_text_rel(10, 15, "HARDWARE PINOUT:", current_theme.accent_color, 1);
-    ui_draw_text_rel(10, 30, "GP4/5  - Rotary Encoder", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 43, "GP14   - ENC Switch", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 56, "GP23   - Mode Switch", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 69, "GP26   - Vin ADC (DX7)", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 82, "I2C    - MPR121 Touch", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 95, "SPI    - TFT & SD Card", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 5, "RP2350 HW PINOUT:", current_theme.accent_color, 2);
+    ui_draw_text_rel(10, 30, "GP 4/5  - Rotary Encoder", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 43, "GP 6/7  - I2C NUMPAD SDA/CLK", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 56, "GP 14   - ENC Switch_1", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 69, "GP 22   - TFT BLK_PWM", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 82, "GP 23   - MODE Switch_2", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 95, "GP 26   - Vin ADC (DX7)", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 108, "SPI_0   - TFT LCD", current_theme.accent_color, 1);
+    ui_draw_text_rel(10, 121, "GP 0    - TFT_DC", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 134, "GP 1    - TFT_CS", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 147, "GP 2    - TFT_SCLK", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 160, "GP 3    - TFT_MOSI", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 173, "GP 15   - TFT_RST", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 186, "SPI_1   - SD Card",current_theme.accent_color 1); // 4. SD Card (SPI1)
+    ui_draw_text_rel(10, 199, "GP 8   - SD_MISO", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 212, "GP 9   - SD_CS", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 235, "GP 10   - SD_SCK", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 248, "GP 11   - SD_MOSI", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 261, "UART_0   - MIDI RX/TX", current_theme.accent_color, 1);
+    ui_draw_text_rel(10, 274, "GP 12   - MIDI TX", current_theme.text_color, 1);
+    ui_draw_text_rel(10, 287, "GP 13   - MIDI RX", current_theme.text_color, 1);
 }
 
 // ====================================================================
@@ -534,29 +488,35 @@ void system_mode_render(void) {
     );
 
     // ПЕРЕРИСОВЫВАЕМ КАСТОМНЫЙ FOOTER ПОСЛЕ ВСЕХ ОСТАЛЬНЫХ ОПЕРАЦИЙ
-    if (sys_page_idx == 1) {
-        if (mpr_edit_mode) {
-            ui_draw_footer("EDIT: ENC=change, SW=save");
-        } else {
-            ui_draw_footer("ENC: select | SW=edit | Hold SW: exit");
-        }
-    } else if (sys_page_idx == 2) {
-        ui_draw_footer("ENC: scroll | SW: toggle");
-    }
+    //if (sys_page_idx == 1) {
+    //    if (mpr_edit_mode) {
+    //        ui_draw_footer("EDIT: ENC=change, SW=save");
+    //    } else {
+    //        ui_draw_footer("ENC: select | SW=edit | Hold SW: exit");
+    //    }
+    //} else if (sys_page_idx == 2) {
+    //    ui_draw_footer("ENC: scroll | SW: toggle");
+    //}
 
     // Сбрасываем флаг после отрисовки (как в help_mode.c)
     sys_force_redraw = false;
 }
 
 void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
-    bool sw_click = (touched != 0 && !sw_held);
+    // ОРИГИНАЛЬНАЯ ЛОГИКА ДЛЯ СЕНСОРНОЙ ПАНЕЛИ (MPR121)
+    bool sw_click_mpr = (touched != 0 && !sw_held);
+    
+    // ЛОГИКА ДЛЯ ЭНКОДЕРА (Blackbox)
+    uint8_t click_type = encoder_get_click_type(); // 0=нет, 1=одиночный, 2=двойной
+    printf("click_type %s\n", click_type);
+    bool sw_click = (click_type == 1);
+    bool sw_double_click_enc = (click_type == 2);
 
     // ============================================================
-    // СТРАНИЦА 2: MPR121 (СПЕЦИАЛЬНАЯ ЛОГИКА)
+    // СТРАНИЦА 2: MPR121 (ИСПОЛЬЗУЕМ СЕНСОРНУЮ ПАНЕЛЬ)
     // ============================================================
     if (sys_page_idx == 1) {
-        
-        // === В РЕЖИМЕ РЕДАКТИРОВАНИЯ ===
+        // === РЕЖИМ РЕДАКТИРОВАНИЯ ===
         if (mpr_edit_mode) {
             if (enc_delta != 0) {
                 int new_action = mpr_temp_action + enc_delta;
@@ -564,15 +524,19 @@ void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
                 if (new_action >= MPR_ACTION_COUNT) new_action = 0;
                 mpr_temp_action = new_action;
                 printf("[MPR] K%d -> %s (preview)\n", mpr_selected, mpr_full_names[mpr_temp_action]);
-                
-                // ТОЛЬКО обновление кубиков, без полной перерисовки!
                 update_mpr121_display();
-                // FOOTER, чтобы обновить подсказку (если она меняется)
-                ui_draw_footer(mpr_edit_mode ? "EDIT: ENC=change, SW=save" : "ENC: select | SW=edit | Hold SW: exit");
                 return;
             }
-            
-            if (sw_click) {
+
+            if (sw_held) {
+                printf("[MPR] Edit canceled\n");
+                mpr_edit_mode = false;
+                sys_force_redraw = true;
+                system_mode_render();
+                return;
+            }
+
+            if (sw_double_click_enc) {
                 if (mpr_mapping[mpr_selected] != mpr_temp_action) {
                     mpr_mapping[mpr_selected] = mpr_temp_action;
                     mpr_changed[mpr_selected] = true;
@@ -581,92 +545,91 @@ void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
                 }
                 mpr_edit_mode = false;
                 sys_force_redraw = true;
-                system_mode_render();  // Полная перерисовка для смены footer
-                // FOOTER, чтобы обновить подсказку (если она меняется)
-                ui_draw_footer(mpr_edit_mode ? "EDIT: ENC=change, SW=save" : "ENC: select | SW=edit | Hold SW: exit");
-                return;
-            }
-            
-            if (sw_held) {
-                printf("[MPR] Edit canceled\n");
-                mpr_edit_mode = false;
-                sys_force_redraw = true;
-                system_mode_render();  // Полная перерисовка для смены footer
+                system_mode_render();
                 return;
             }
             
             return;
         }
-        
-        // === В ОБЫЧНОМ РЕЖИМЕ ===
-        
+
+        // === ОБЫЧНЫЙ РЕЖИМ ===
         if (enc_delta != 0) {
             mpr_selected = (mpr_selected + enc_delta + 12) % 12;
             printf("[MPR] Selected K%d (%s)\n", mpr_selected, mpr_full_names[mpr_mapping[mpr_selected]]);
-            
-            // ТОЛЬКО обновление кубиков!
             update_mpr121_display();
             return;
         }
-        
-        if (sw_held) {
-            mpr_edit_mode = true;
-            mpr_temp_action = mpr_mapping[mpr_selected];
-            printf("[MPR] Edit ON for K%d (current: %s)\n", mpr_selected, mpr_full_names[mpr_temp_action]);
-            sys_force_redraw = true;
-            system_mode_render();  // Полная перерисовка для смены footer
-            return;
-        }
-        
-        if (sw_click) {
+
+        // ✅ ИСПОЛЬЗУЕМ sw_click_mpr ДЛЯ СЕНСОРНОЙ ПАНЕЛИ
+        if (sw_click_mpr) {
             sys_page_idx = (sys_page_idx + 1) % SYS_TOTAL_PAGES;
             printf("[SYS_PAGE]: %d\n", sys_page_idx + 1);
             sys_force_redraw = true;
             system_mode_render();
             return;
         }
-        
+
+        if (sw_held) {
+            mpr_edit_mode = true;
+            mpr_temp_action = mpr_mapping[mpr_selected];
+            printf("[MPR] Edit ON for K%d (current: %s)\n", mpr_selected, mpr_full_names[mpr_temp_action]);
+            sys_force_redraw = true;
+            system_mode_render();
+            return;
+        }
+
         return;
     }
 
     // ============================================================
-    // СТРАНИЦА 3: Blackbox меню (ОПТИМИЗИРОВАННАЯ ЛОГИКА)
+    // СТРАНИЦА 3: Blackbox (ДОБАВЛЯЕМ ПЕРЕХОД НА СТРАНИЦУ 4)
     // ============================================================
     if (sys_page_idx == 2) {
         if (enc_delta != 0) {
             blackbox_selected_item = (blackbox_selected_item + enc_delta + BLACKBOX_ITEMS) % BLACKBOX_ITEMS;
             printf("[SYS] Blackbox item %d selected\n", blackbox_selected_item);
-            
-            // ТОЛЬКО обновление items, БЕЗ полной перерисовки!
             update_blackbox_items_display();
-            // ПЕРЕРИСОВАТЬ FOOTER (он статичный на этой странице, но для надежности)
-            ui_draw_footer("ENC: scroll | SW: toggle");
             return;
         }
-        
+
         if (sw_click) {
-            switch(blackbox_selected_item) {
-                case 0: 
-                    g_cli_debug_usb_active = !g_cli_debug_usb_active;
-                    printf("[SYS] USB Trace: %s\n", g_cli_debug_usb_active ? "ON" : "OFF");
-                    break;
-                case 1: 
-                    g_cli_debug_sd_active = !g_cli_debug_sd_active;
-                    printf("[SYS] SD Log: %s\n", g_cli_debug_sd_active ? "ON" : "OFF");
-                    break;
-                case 2: 
-                    printf("[SYS] MIDI Monitor: not implemented\n");
-                    break;
-                case 3: 
-                    printf("[SYS] Debug Chrono: not implemented\n");
-                    break;
-            }
-            
-            // ТОЛЬКО обновление items!
-            update_blackbox_items_display();
+            // ✅ ИСПРАВЛЕНО: 1 клик = переход на следующую страницу
+            sys_page_idx = (sys_page_idx + 1) % SYS_TOTAL_PAGES;
+            printf("[SYS_PAGE]: %d\n", sys_page_idx + 1);
+            sys_force_redraw = true;
+            system_mode_render();
             return;
         }
-        
+
+        if (sw_held) {
+            // ✅ ДОБАВЛЯЕМ ПЕРЕХОД НА СЛЕДУЮЩУЮ СТРАНИЦУ
+            sys_page_idx = (sys_page_idx + 1) % SYS_TOTAL_PAGES;
+            printf("[SYS_PAGE]: %d\n", sys_page_idx + 1);
+            sys_force_redraw = true;
+            system_mode_render();
+            return;
+        }
+
+        return;
+    }
+
+    // ============================================================
+    // СТРАНИЦЫ 0, 3, 4: Информационные (ИСПОЛЬЗУЕМ СЕНСОРНУЮ ПАНЕЛЬ)
+    // ============================================================
+    if (sys_page_idx == 0 || sys_page_idx == 3 || sys_page_idx == 4) {
+        if (enc_delta != 0) {
+            return;
+        }
+
+        // ✅ ИСПОЛЬЗУЕМ sw_click_mpr ДЛЯ СЕНСОРНОЙ ПАНЕЛИ
+        if (sw_click_mpr) {
+            sys_page_idx = (sys_page_idx + 1) % SYS_TOTAL_PAGES;
+            printf("[SYS_PAGE]: %d\n", sys_page_idx + 1);
+            sys_force_redraw = true;
+            system_mode_render();
+            return;
+        }
+
         if (sw_held) {
             sys_page_idx = (sys_page_idx + SYS_TOTAL_PAGES - 1) % SYS_TOTAL_PAGES;
             printf("[SYS_PAGE]: %d\n", sys_page_idx + 1);
@@ -674,31 +637,7 @@ void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
             system_mode_render();
             return;
         }
-        
-        return;
-    }
 
-    // ============================================================
-    // ВСЕ ОСТАЛЬНЫЕ СТРАНИЦЫ
-    // ============================================================
-    
-    if (enc_delta != 0) {
-        return;
-    }
-    
-    if (sw_click) {
-        sys_page_idx = (sys_page_idx + 1) % SYS_TOTAL_PAGES;
-        printf("[SYS_PAGE]: %d\n", sys_page_idx + 1);
-        sys_force_redraw = true;
-        system_mode_render();
-        return;
-    }
-    
-    if (sw_held) {
-        sys_page_idx = (sys_page_idx + SYS_TOTAL_PAGES - 1) % SYS_TOTAL_PAGES;
-        printf("[SYS_PAGE]: %d\n", sys_page_idx + 1);
-        sys_force_redraw = true;
-        system_mode_render();
         return;
     }
 }
