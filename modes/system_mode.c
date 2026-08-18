@@ -56,7 +56,7 @@ static uint16_t sys_sel_color(int line_idx) {
     return (selected_item == line_idx) ? current_theme.accent_color : current_theme.text_color;
 }
 
-// ** ПРОТОТИПЫ ФУНКЦИЙ (ДОБАВЛЕНО) **
+// ** ПРОТОТИПЫ ФУНКЦИЙ **
 static void system_mode_measure_voltage(void);
 static float read_dx7_vin_voltage(void);
 static void draw_sys_p1_hardware_stats(void);
@@ -98,7 +98,7 @@ static uint8_t mpr_mapping[12] = {
     MPR_ACTION_STOP, MPR_ACTION_PLAY, MPR_ACTION_FF, MPR_ACTION_RW
 };
 
-// перед draw_sys_p2_mpr121_reassign
+/// перед draw_sys_p2_mpr121_reassign
 static void update_mpr121_display(void) {
     const uint16_t COLOR_BTN_BG   = current_theme.bar_bg_color;
     const uint16_t COLOR_ACTIVE   = 0x07FF;
@@ -107,7 +107,7 @@ static void update_mpr121_display(void) {
     const uint16_t COLOR_BTN_TEXT = 0xFFFF;
 
     int start_x = 10;
-    int start_y = 35;
+    int start_y = 35;  // Относительная координата (от UI_WORK_Y)
     int box_w = 70;
     int box_h = 24;
     int gap = 5;
@@ -137,7 +137,7 @@ static void update_mpr121_display(void) {
             bg_color   = COLOR_ACTIVE;
             text_color = COLOR_BTN_TEXT;
         }
-        
+
         if (is_editing) {
             bg_color   = COLOR_EDIT;
             text_color = COLOR_BTN_TEXT;
@@ -147,46 +147,55 @@ static void update_mpr121_display(void) {
             text_color = COLOR_CHANGED;
         }
 
-        clear_rect(x, y, box_w, box_h, bg_color);
-        clear_rect(x, y, box_w, 1, COLOR_BTN_TEXT);             
-        clear_rect(x, y + box_h - 1, box_w, 1, COLOR_BTN_TEXT); 
-        clear_rect(x, y, 1, box_h, COLOR_BTN_TEXT);             
-        clear_rect(x + box_w - 1, y, 1, box_h, COLOR_BTN_TEXT); 
+        // ⚠️ clear_rect использует АБСОЛЮТНЫЕ координаты
+        // Прибавляем UI_WORK_Y (24) к Y-координате
+        int abs_x = x;
+        int abs_y = UI_WORK_Y + y;
+        clear_rect(abs_x, abs_y, box_w, box_h, bg_color);
+        
+        // Отрисовка рамки (тоже с абсолютными координатами)
+        clear_rect(abs_x, abs_y, box_w, 1, COLOR_BTN_TEXT);             
+        clear_rect(abs_x, abs_y + box_h - 1, box_w, 1, COLOR_BTN_TEXT); 
+        clear_rect(abs_x, abs_y, 1, box_h, COLOR_BTN_TEXT);             
+        clear_rect(abs_x + box_w - 1, abs_y, 1, box_h, COLOR_BTN_TEXT); 
 
+        // ✅ Используем ui_draw_text_rel() с ОТНОСИТЕЛЬНЫМИ координатами
         char buf[8];
         uint8_t action = mpr_mapping[i];
         snprintf(buf, sizeof(buf), "%.6s", mpr_short_names[action]);
-        draw_text_scaled(x + 6, y + 6, buf, text_color, bg_color, 1);
+        ui_draw_text_rel(x + 6, y + 6, buf, text_color, 1);  // ← заменили draw_text_scaled на ui_draw_text_rel
     }
 }
 
 // ⭐ ПЕРЕМЕСТИТЬ СЮДА (перед draw_sys_p3_blackbox_menu)
 static void update_blackbox_items_display(void) {
     char buf[32];
-    
-    // Очищаем ТОЛЬКО область значений (правая часть)
-    clear_rect(140, 38, 80, 12, current_theme.bg_color);
-    clear_rect(140, 52, 80, 12, current_theme.bg_color);
-    clear_rect(140, 66, 80, 12, current_theme.bg_color);
-    clear_rect(140, 80, 80, 12, current_theme.bg_color);
-    
-    // Item 1: USB Trace
+
+    // Очищаем ТОЛЬКО область значений (правая часть) - ИСПОЛЬЗУЕМ АБСОЛЮТНЫЕ КООРДИНАТЫ!
+    // Так как clear_rect() работает с абсолютными координатами,
+    // прибавляем UI_WORK_Y (24 пикселя) к каждой координате Y
+    clear_rect(140, 24 + 38, 80, 12, current_theme.bg_color);  // 24 + 38 = 62
+    clear_rect(140, 24 + 52, 80, 12, current_theme.bg_color);  // 24 + 52 = 76
+    clear_rect(140, 24 + 66, 80, 12, current_theme.bg_color);  // 24 + 66 = 90
+    clear_rect(140, 24 + 80, 80, 12, current_theme.bg_color);  // 24 + 80 = 104
+
+    // Item 1: USB Trace - ИСПОЛЬЗУЕМ ОТНОСИТЕЛЬНУЮ ФУНКЦИЮ
     uint16_t color = (blackbox_selected_item == 0) ? 0x07FF : current_theme.text_color;
     snprintf(buf, sizeof(buf), "%s", g_cli_debug_usb_active ? "[ENABLED]" : "[DISABLED]");
-    draw_text_scaled(140, 40, buf, color, current_theme.bg_color, 1);
-    
+    ui_draw_text_rel(140, 40, buf, color, 1);  // ← ЗАМЕНИЛИ draw_text_scaled на ui_draw_text_rel
+
     // Item 2: SD Card
     color = (blackbox_selected_item == 1) ? 0x07FF : current_theme.text_color;
     snprintf(buf, sizeof(buf), "%s", g_cli_debug_sd_active ? "[ENABLED]" : "[DISABLED]");
-    draw_text_scaled(140, 54, buf, color, current_theme.bg_color, 1);
-    
+    ui_draw_text_rel(140, 54, buf, color, 1);  // ← ЗАМЕНИЛИ
+
     // Item 3: MIDI Monitor
     color = (blackbox_selected_item == 2) ? 0x07FF : current_theme.text_color;
-    draw_text_scaled(140, 68, "[OFF]", color, current_theme.bg_color, 1);
-    
+    ui_draw_text_rel(140, 68, "[OFF]", color, 1);  // ← ЗАМЕНИЛИ
+
     // Item 4: Debug Chrono
     color = (blackbox_selected_item == 3) ? 0x07FF : current_theme.text_color;
-    draw_text_scaled(140, 82, "[ON]", color, current_theme.bg_color, 1);
+    ui_draw_text_rel(140, 82, "[ON]", color, 1);  // ← ЗАМЕНИЛИ
 }
 
 // Полный порядок в system_mode.c (структура)
@@ -279,9 +288,10 @@ static void system_mode_measure_voltage(void) {
 static void draw_sys_p1_hardware_stats(void) {
     printf("[SYS] draw_p1\n");
     char buf[64];
-    int current_y = 15;
-    const int line_step = 13;
+    int current_y = 30;
+    const int line_step = 14;
     const uint16_t COLOR_ALERT_RED = 0xF800;
+    ui_draw_text_rel(0, 5, "HARDWARE DIAGNOS:", current_theme.accent_color, 2);
 
     // 1. ЧАСТОТА И АРХИТЕКТУРА ЯДРА
     uint32_t cpu_hz = clock_get_hz(clk_sys) / 1000000;
@@ -347,7 +357,7 @@ static void draw_sys_p1_hardware_stats(void) {
 
 
     // ====================================================================
-    // ЦВЕТОВАЯ ПАЛИТРА (СТРОГО НА ОСНОВЕ ВАШИХ ЖИВЫХ ФОТОГРАФИЙ)
+    // ЦВЕТОВАЯ ПАЛИТРА (СТРОГО НА ОСНОВЕ ui_theme.c
     // ====================================================================
     static void draw_sys_p2_mpr121_reassign(void) {
         const uint16_t COLOR_BTN_BG   = current_theme.bar_bg_color;
@@ -363,17 +373,17 @@ static void draw_sys_p1_hardware_stats(void) {
         int gap = 5;
     
         // Заголовок (статическая часть)
-        ui_draw_text_rel(10, 0, "NUMPAD MAPPING:", COLOR_ACTIVE, 2);
-        
-        // Footer через ui_engine API
-        if (mpr_edit_mode) {
-            ui_draw_footer("EDIT: ENC=change, SW=save");
-        } else {
-            ui_draw_footer("ENC: select | SW=edit | Hold SW: exit");
-        }
+        ui_draw_text_rel(10, 5, "NUMPAD MAPPING:", COLOR_ACTIVE, 2);
         
         // Отрисовка всех кубиков (обновляется через update_mpr121_display)
         update_mpr121_display();
+        
+        // Footer через ui_engine API
+        //if (mpr_edit_mode) {
+        //    ui_draw_footer("EDIT: ENC=change, SW=save");
+        //} else {
+        //    ui_draw_footer("ENC: select | SW=edit | Hold SW: exit");
+        //}
     }
 /*
     // НОВАЯ ФУНКЦИЯ: Обновление ТОЛЬКО кубиков MPR121
@@ -408,7 +418,7 @@ static void draw_sys_p1_hardware_stats(void) {
             uint16_t text_color = COLOR_BTN_TEXT; 
     
             if (is_selected && !is_pressed) {
-                bg_color   = COLOR_BTN_BG;
+                bg_color   = COLOR_BTN_BG;  
                 text_color = COLOR_ACTIVE;
             }
     
@@ -451,22 +461,22 @@ static void draw_sys_p1_hardware_stats(void) {
     static void draw_sys_p3_blackbox_menu(void) {
         // Статическая отрисовка заголовка и структуры (только при смене страницы)
         char buf[64];
-        
+
         // Заголовок страницы
         ui_draw_text_rel(0, 5, "BLACKBOX LOGGING", current_theme.accent_color, 2);
-        
+
         // Разделительная линия (опционально)
         //clear_rect(10, 28, TFT_WIDTH - 20, 1, current_theme.bar_bg_color);
-        
+
         // Пункты меню (структура)
         ui_draw_text_rel(10, 40, "1. USB Bug Trace:", current_theme.text_color, 1);
         ui_draw_text_rel(10, 54, "2. SD Card Logger:", current_theme.text_color, 1);
         ui_draw_text_rel(10, 68, "3. MIDI Monitor:", current_theme.text_color, 1);
         ui_draw_text_rel(10, 82, "4. Debug Chrono:", current_theme.text_color, 1);
-        
+
         // Footer через ui_engine API
-        ui_draw_footer("ENC: scroll | SW: toggle");
-        
+        //ui_draw_footer("ENC: scroll | SW: toggle");
+
         // Динамическая часть - состояние items (обновляется отдельно)
         update_blackbox_items_display();
     }
@@ -503,8 +513,8 @@ static void draw_sys_p5_pinout(void) {
 // ====================================================================
 static void (*sys_pages[SYS_TOTAL_PAGES])(void) = {
     draw_sys_p1_hardware_stats,
-    draw_sys_p2_mpr121_reassign,    // <-- Сложная страница отодвинута на позицию 3
-    draw_sys_p3_blackbox_menu,      // <-- Временная замена: простая страница
+    draw_sys_p2_mpr121_reassign,    // <-- Сложная страница
+    draw_sys_p3_blackbox_menu,      // <-- простая страница
     draw_sys_p4_project_struct,
     draw_sys_p5_pinout
 };
@@ -519,8 +529,20 @@ void system_mode_render(void) {
         sys_page_idx,                  // Текущая страница
         SYS_TOTAL_PAGES,               // Всего страниц
         sys_force_redraw,              // Флаг перерисовки
-        sys_pages[sys_page_idx]        // Указатель на функцию отрисовки страницы
+        sys_pages[sys_page_idx]       // Указатель на функцию отрисовки страницы
+        //NULL                           // стандартный footer по умолчанию
     );
+
+    // ПЕРЕРИСОВЫВАЕМ КАСТОМНЫЙ FOOTER ПОСЛЕ ВСЕХ ОСТАЛЬНЫХ ОПЕРАЦИЙ
+    if (sys_page_idx == 1) {
+        if (mpr_edit_mode) {
+            ui_draw_footer("EDIT: ENC=change, SW=save");
+        } else {
+            ui_draw_footer("ENC: select | SW=edit | Hold SW: exit");
+        }
+    } else if (sys_page_idx == 2) {
+        ui_draw_footer("ENC: scroll | SW: toggle");
+    }
 
     // Сбрасываем флаг после отрисовки (как в help_mode.c)
     sys_force_redraw = false;
@@ -543,8 +565,10 @@ void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
                 mpr_temp_action = new_action;
                 printf("[MPR] K%d -> %s (preview)\n", mpr_selected, mpr_full_names[mpr_temp_action]);
                 
-                // ⭐ ТОЛЬКО обновление кубиков, без полной перерисовки!
+                // ТОЛЬКО обновление кубиков, без полной перерисовки!
                 update_mpr121_display();
+                // FOOTER, чтобы обновить подсказку (если она меняется)
+                ui_draw_footer(mpr_edit_mode ? "EDIT: ENC=change, SW=save" : "ENC: select | SW=edit | Hold SW: exit");
                 return;
             }
             
@@ -558,6 +582,8 @@ void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
                 mpr_edit_mode = false;
                 sys_force_redraw = true;
                 system_mode_render();  // Полная перерисовка для смены footer
+                // FOOTER, чтобы обновить подсказку (если она меняется)
+                ui_draw_footer(mpr_edit_mode ? "EDIT: ENC=change, SW=save" : "ENC: select | SW=edit | Hold SW: exit");
                 return;
             }
             
@@ -578,7 +604,7 @@ void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
             mpr_selected = (mpr_selected + enc_delta + 12) % 12;
             printf("[MPR] Selected K%d (%s)\n", mpr_selected, mpr_full_names[mpr_mapping[mpr_selected]]);
             
-            // ⭐ ТОЛЬКО обновление кубиков!
+            // ТОЛЬКО обновление кубиков!
             update_mpr121_display();
             return;
         }
@@ -611,8 +637,10 @@ void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
             blackbox_selected_item = (blackbox_selected_item + enc_delta + BLACKBOX_ITEMS) % BLACKBOX_ITEMS;
             printf("[SYS] Blackbox item %d selected\n", blackbox_selected_item);
             
-            // ⭐ ТОЛЬКО обновление items, БЕЗ полной перерисовки!
+            // ТОЛЬКО обновление items, БЕЗ полной перерисовки!
             update_blackbox_items_display();
+            // ПЕРЕРИСОВАТЬ FOOTER (он статичный на этой странице, но для надежности)
+            ui_draw_footer("ENC: scroll | SW: toggle");
             return;
         }
         
@@ -634,7 +662,7 @@ void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
                     break;
             }
             
-            // ⭐ ТОЛЬКО обновление items!
+            // ТОЛЬКО обновление items!
             update_blackbox_items_display();
             return;
         }
