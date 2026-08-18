@@ -15,19 +15,21 @@
 #include <stdarg.h>
 #include <string.h>
 
+// ============ ПЕРЕМЕННЫЕ ============
+static int selected_item = 1; // курсор R.ENC на текущей странице
+static bool mpr_changed[12] = {false};
 static uint8_t sys_page_idx = 0;
 static bool sys_force_redraw = true;
 static bool adc_initialized = false;
 static float cached_vin = 5.0f;
 static bool vin_measured = false;
 #define SYS_TOTAL_PAGES 5
-static int selected_item = 0; // курсор R.ENC на текущей странице
-// Состояние
 static uint8_t mpr_selected = 0;
 static bool mpr_edit_mode = false;
 static uint8_t mpr_temp_action = 0;
-static uint16_t mpr_last_state = 0xFFFF; // Для отслеживания нажатий
-
+static uint16_t mpr_last_state = 0xFFFF;
+static int blackbox_selected_item = 0;
+#define BLACKBOX_ITEMS 4
 // Blackbox toggles (стр.3)
 static bool bb_usb_trace = true;
 static bool bb_sd_log = false;
@@ -65,6 +67,8 @@ static void draw_sys_p5_pinout(void);
 static void handle_mpr121_edit(int enc_delta, bool sw_pressed, bool sw_held);
 static void load_mpr121_mapping(void);
 static void save_mpr121_mapping(void);
+static void update_mpr121_display(void);
+static void update_blackbox_items_display(void);
 
 #define MPR121_MAP_PATH "map/mpr121.map"
 
@@ -94,8 +98,96 @@ static uint8_t mpr_mapping[12] = {
     MPR_ACTION_STOP, MPR_ACTION_PLAY, MPR_ACTION_FF, MPR_ACTION_RW
 };
 
+// перед draw_sys_p2_mpr121_reassign
+static void update_mpr121_display(void) {
+    const uint16_t COLOR_BTN_BG   = current_theme.bar_bg_color;
+    const uint16_t COLOR_ACTIVE   = 0x07FF;
+    const uint16_t COLOR_EDIT     = 0x07E0;
+    const uint16_t COLOR_CHANGED  = 0xF800;
+    const uint16_t COLOR_BTN_TEXT = 0xFFFF;
 
-static bool mpr_changed[12] = {false};
+    int start_x = 10;
+    int start_y = 35;
+    int box_w = 70;
+    int box_h = 24;
+    int gap = 5;
+
+    uint16_t touched = mpr121_read_touched();
+
+    for (int i = 0; i < 12; i++) {
+        int col = i % 4;
+        int row = i / 4;
+        int x = start_x + col * (box_w + gap);
+        int y = start_y + row * (box_h + gap);
+
+        bool is_pressed = (touched & (1 << i)) != 0;
+        bool is_selected = (i == mpr_selected);
+        bool is_editing = (is_selected && mpr_edit_mode);
+        bool is_changed = mpr_changed[i];
+
+        uint16_t bg_color   = COLOR_BTN_BG;
+        uint16_t text_color = COLOR_BTN_TEXT; 
+
+        if (is_selected && !is_pressed) {
+            bg_color   = COLOR_BTN_BG;
+            text_color = COLOR_ACTIVE;
+        }
+
+        if (is_pressed) {
+            bg_color   = COLOR_ACTIVE;
+            text_color = COLOR_BTN_TEXT;
+        }
+        
+        if (is_editing) {
+            bg_color   = COLOR_EDIT;
+            text_color = COLOR_BTN_TEXT;
+        }
+
+        if (is_changed && !is_selected && !is_pressed && !is_editing) {
+            text_color = COLOR_CHANGED;
+        }
+
+        clear_rect(x, y, box_w, box_h, bg_color);
+        clear_rect(x, y, box_w, 1, COLOR_BTN_TEXT);             
+        clear_rect(x, y + box_h - 1, box_w, 1, COLOR_BTN_TEXT); 
+        clear_rect(x, y, 1, box_h, COLOR_BTN_TEXT);             
+        clear_rect(x + box_w - 1, y, 1, box_h, COLOR_BTN_TEXT); 
+
+        char buf[8];
+        uint8_t action = mpr_mapping[i];
+        snprintf(buf, sizeof(buf), "%.6s", mpr_short_names[action]);
+        draw_text_scaled(x + 6, y + 6, buf, text_color, bg_color, 1);
+    }
+}
+
+// ⭐ ПЕРЕМЕСТИТЬ СЮДА (перед draw_sys_p3_blackbox_menu)
+static void update_blackbox_items_display(void) {
+    char buf[32];
+    
+    // Очищаем ТОЛЬКО область значений (правая часть)
+    clear_rect(140, 38, 80, 12, current_theme.bg_color);
+    clear_rect(140, 52, 80, 12, current_theme.bg_color);
+    clear_rect(140, 66, 80, 12, current_theme.bg_color);
+    clear_rect(140, 80, 80, 12, current_theme.bg_color);
+    
+    // Item 1: USB Trace
+    uint16_t color = (blackbox_selected_item == 0) ? 0x07FF : current_theme.text_color;
+    snprintf(buf, sizeof(buf), "%s", g_cli_debug_usb_active ? "[ENABLED]" : "[DISABLED]");
+    draw_text_scaled(140, 40, buf, color, current_theme.bg_color, 1);
+    
+    // Item 2: SD Card
+    color = (blackbox_selected_item == 1) ? 0x07FF : current_theme.text_color;
+    snprintf(buf, sizeof(buf), "%s", g_cli_debug_sd_active ? "[ENABLED]" : "[DISABLED]");
+    draw_text_scaled(140, 54, buf, color, current_theme.bg_color, 1);
+    
+    // Item 3: MIDI Monitor
+    color = (blackbox_selected_item == 2) ? 0x07FF : current_theme.text_color;
+    draw_text_scaled(140, 68, "[OFF]", color, current_theme.bg_color, 1);
+    
+    // Item 4: Debug Chrono
+    color = (blackbox_selected_item == 3) ? 0x07FF : current_theme.text_color;
+    draw_text_scaled(140, 82, "[ON]", color, current_theme.bg_color, 1);
+}
 
 // Полный порядок в system_mode.c (структура)
 // 1. Заголовки
@@ -257,95 +349,127 @@ static void draw_sys_p1_hardware_stats(void) {
     // ====================================================================
     // ЦВЕТОВАЯ ПАЛИТРА (СТРОГО НА ОСНОВЕ ВАШИХ ЖИВЫХ ФОТОГРАФИЙ)
     // ====================================================================
-static void draw_sys_p2_mpr121_reassign(void) {
-
-    const uint16_t COLOR_BTN_BG   = current_theme.bar_bg_color; // серый фон кубика
-    const uint16_t COLOR_ACTIVE   = 0x07FF; // бирюзовый (выбор / press)
-    const uint16_t COLOR_EDIT     = 0xF800; // красный (режим редактирования)
-    const uint16_t COLOR_CHANGED  = 0x07E0; // зелёный (изменено и сохранено)
-    const uint16_t COLOR_BTN_TEXT = 0xFFFF; // белый текст
-
-    int start_x = 10;
-    int start_y = 55;
-    int box_w = 70;
-    int box_h = 24;
-    int gap = 5;
-
-    // Шапка страницы
-    draw_text_scaled(start_x, start_y - 28, "NUMPAD MAPPING:", COLOR_ACTIVE, current_theme.bg_color, 2);
-
-    uint16_t touched = mpr121_read_touched();
-
-    for (int i = 0; i < 12; i++) {
-        int col = i % 4;
-        int row = i / 4;
-        int x = start_x + col * (box_w + gap);
-        int y = start_y + row * (box_h + gap);
-
-        bool is_pressed = (touched & (1 << i)) != 0;
-        bool is_selected = (i == mpr_selected);
-        bool is_editing = (is_selected && mpr_edit_mode);
-        bool is_changed = mpr_changed[i];
-
-        uint16_t bg_color   = COLOR_BTN_BG;
-        uint16_t text_color = COLOR_BTN_TEXT;
-        uint16_t border_color = COLOR_BTN_TEXT;
-
-        if (is_pressed && !is_editing) {
-            bg_color   = COLOR_ACTIVE;
-            text_color = COLOR_BTN_TEXT;
-        } else if (is_editing) {
-            bg_color   = COLOR_EDIT;       // красный фон редактируемой кнопки
-            text_color = COLOR_BTN_TEXT;
-            border_color = COLOR_EDIT;
-        } else if (is_changed) {
-            // Зелёный после save — даже если кнопка остаётся selected
-            text_color = COLOR_CHANGED;
-            border_color = COLOR_CHANGED;
-            if (is_selected) {
-                bg_color = COLOR_BTN_BG;
-            }
-        } else if (is_selected) {
-            text_color = COLOR_ACTIVE;     // бирюзовый шрифт на выбранной
-        }
-
-        clear_rect(x, y, box_w, box_h, bg_color);
-
-        clear_rect(x, y, box_w, 1, border_color);
-        clear_rect(x, y + box_h - 1, box_w, 1, border_color);
-        clear_rect(x, y, 1, box_h, border_color);
-        clear_rect(x + box_w - 1, y, 1, box_h, border_color);
-
-        // В edit — live preview из mpr_temp_action, иначе сохранённый mapping
-        char buf[8];
-        uint8_t action = is_editing ? mpr_temp_action : mpr_mapping[i];
-        snprintf(buf, sizeof(buf), "%.6s", mpr_short_names[action]);
-        draw_text_scaled(x + 6, y + 6, buf, text_color, bg_color, 1);
-    }
-
-    // Одна строка в системный footer (16px) — перезаписывает "PAGE x/y"
-    if (mpr_edit_mode) {
-        ui_draw_footer("EDIT ENC=CHG |SW=SAVE |HoldSW=ESC");
-    } else {
-        ui_draw_footer("HoldSW=EDIT |SW=NEXT |ENC=PAGE/5");
-    }
-}
-
-// ====================================================================
-// СТРАНИЦА 3: СЕРВИСНОЕ МЕНЮ ЛОГОВ
-// ====================================================================
-static void draw_sys_p3_blackbox_menu(void) {
-    printf("[SYS] draw_p3\n");
-    // Очищаем только рабочую область (без заголовка)
-    clear_rect(0, 15, TFT_WIDTH, TFT_HEIGHT - 30, current_theme.bg_color);
+    static void draw_sys_p2_mpr121_reassign(void) {
+        const uint16_t COLOR_BTN_BG   = current_theme.bar_bg_color;
+        const uint16_t COLOR_ACTIVE   = 0x07FF;
+        const uint16_t COLOR_EDIT     = 0x07E0;
+        const uint16_t COLOR_CHANGED  = 0xF800;
+        const uint16_t COLOR_BTN_TEXT = 0xFFFF;
     
-    ui_draw_text_rel(10, 15, "BLACKBOX / LOGGING:", current_theme.accent_color, 1);
-    ui_draw_text_rel(10, 30, "1. USB Trace - ENABLED", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 43, "2. SD Card Log - DISABLED", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 56, "3. MIDI Monitor - OFF", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 69, "4. Debug Chrono - ON", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 82, "Press ENC SW to toggle items", current_theme.text_color, 1);
-}
+        int start_x = 10;
+        int start_y = 10;
+        int box_w = 70;
+        int box_h = 24;
+        int gap = 5;
+    
+        // Заголовок (статическая часть)
+        ui_draw_text_rel(10, 0, "NUMPAD MAPPING:", COLOR_ACTIVE, 2);
+        
+        // Footer через ui_engine API
+        if (mpr_edit_mode) {
+            ui_draw_footer("EDIT: ENC=change, SW=save");
+        } else {
+            ui_draw_footer("ENC: select | SW=edit | Hold SW: exit");
+        }
+        
+        // Отрисовка всех кубиков (обновляется через update_mpr121_display)
+        update_mpr121_display();
+    }
+/*
+    // НОВАЯ ФУНКЦИЯ: Обновление ТОЛЬКО кубиков MPR121
+    static void update_mpr121_display(void) {
+        const uint16_t COLOR_BTN_BG   = current_theme.bar_bg_color;
+        const uint16_t COLOR_ACTIVE   = 0x07FF;
+        const uint16_t COLOR_EDIT     = 0x07E0;
+        const uint16_t COLOR_CHANGED  = 0xF800;
+        const uint16_t COLOR_BTN_TEXT = 0xFFFF;
+    
+        int start_x = 10;
+        int start_y = 35;
+        int box_w = 70;
+        int box_h = 24;
+        int gap = 5;
+    
+        uint16_t touched = mpr121_read_touched();
+    
+        for (int i = 0; i < 12; i++) {
+            int col = i % 4;
+            int row = i / 4;
+            int x = start_x + col * (box_w + gap);
+            int y = start_y + row * (box_h + gap);
+    
+            bool is_pressed = (touched & (1 << i)) != 0;
+            bool is_selected = (i == mpr_selected);
+            bool is_editing = (is_selected && mpr_edit_mode);
+            bool is_changed = mpr_changed[i];
+    
+            // Расчёт цветовой схемы
+            uint16_t bg_color   = COLOR_BTN_BG;
+            uint16_t text_color = COLOR_BTN_TEXT; 
+    
+            if (is_selected && !is_pressed) {
+                bg_color   = COLOR_BTN_BG;
+                text_color = COLOR_ACTIVE;
+            }
+    
+            if (is_pressed) {
+                bg_color   = COLOR_ACTIVE;
+                text_color = COLOR_BTN_TEXT;
+            }
+            
+            if (is_editing) {
+                bg_color   = COLOR_EDIT;
+                text_color = COLOR_BTN_TEXT;
+            }
+    
+            if (is_changed && !is_selected && !is_pressed && !is_editing) {
+                text_color = COLOR_CHANGED;
+            }
+    
+            // Отрисовка подложки кубика
+            clear_rect(x, y, box_w, box_h, bg_color);
+            
+            // Отрисовка рамки
+            clear_rect(x, y, box_w, 1, COLOR_BTN_TEXT);             
+            clear_rect(x, y + box_h - 1, box_w, 1, COLOR_BTN_TEXT); 
+            clear_rect(x, y, 1, box_h, COLOR_BTN_TEXT);             
+            clear_rect(x + box_w - 1, y, 1, box_h, COLOR_BTN_TEXT); 
+    
+            // Форматирование подписи
+            char buf[8];
+            uint8_t action = mpr_mapping[i];
+            snprintf(buf, sizeof(buf), "%.6s", mpr_short_names[action]);
+            
+            // Вывод текста
+            draw_text_scaled(x + 6, y + 6, buf, text_color, bg_color, 1);
+        }
+    }
+*/
+    // ============================================================
+    // СТРАНИЦА 3: Blackbox меню (специальная логика)
+    // ============================================================
+    static void draw_sys_p3_blackbox_menu(void) {
+        // Статическая отрисовка заголовка и структуры (только при смене страницы)
+        char buf[64];
+        
+        // Заголовок страницы
+        ui_draw_text_rel(0, 5, "BLACKBOX LOGGING", current_theme.accent_color, 2);
+        
+        // Разделительная линия (опционально)
+        //clear_rect(10, 28, TFT_WIDTH - 20, 1, current_theme.bar_bg_color);
+        
+        // Пункты меню (структура)
+        ui_draw_text_rel(10, 40, "1. USB Bug Trace:", current_theme.text_color, 1);
+        ui_draw_text_rel(10, 54, "2. SD Card Logger:", current_theme.text_color, 1);
+        ui_draw_text_rel(10, 68, "3. MIDI Monitor:", current_theme.text_color, 1);
+        ui_draw_text_rel(10, 82, "4. Debug Chrono:", current_theme.text_color, 1);
+        
+        // Footer через ui_engine API
+        ui_draw_footer("ENC: scroll | SW: toggle");
+        
+        // Динамическая часть - состояние items (обновляется отдельно)
+        update_blackbox_items_display();
+    }
 
 // ====================================================================
 // СТРАНИЦА 4: СТРУКТУРА ПРОЕКТА
@@ -406,92 +530,148 @@ void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
     bool sw_click = (touched != 0 && !sw_held);
 
     // ============================================================
-    // СТРАНИЦА 2: MPR121 (ВСЯ ЛОГИКА)
+    // СТРАНИЦА 2: MPR121 (СПЕЦИАЛЬНАЯ ЛОГИКА)
     // ============================================================
     if (sys_page_idx == 1) {
-        // 1. Долгое нажатие: вход/выход из режима редактирования
-        if (sw_held) {
-            mpr_edit_mode = !mpr_edit_mode;
-            if (mpr_edit_mode) {
-                mpr_temp_action = mpr_mapping[mpr_selected];
-                printf("[MPR] Edit ON for K%d (current: %s)\n", mpr_selected, mpr_full_names[mpr_temp_action]);
-            } else {
-                printf("[MPR] Edit OFF (canceled)\n");
-            }
-            sys_force_redraw = true;
-            system_mode_render();
-            return; // Блокируем переключение страниц
-        }
-
-        // 2. Режим редактирования
+        
+        // === В РЕЖИМЕ РЕДАКТИРОВАНИЯ ===
         if (mpr_edit_mode) {
-            // Вращение меняет действие (предпросмотр)
             if (enc_delta != 0) {
                 int new_action = mpr_temp_action + enc_delta;
                 if (new_action < 0) new_action = MPR_ACTION_COUNT - 1;
                 if (new_action >= MPR_ACTION_COUNT) new_action = 0;
                 mpr_temp_action = new_action;
                 printf("[MPR] K%d -> %s (preview)\n", mpr_selected, mpr_full_names[mpr_temp_action]);
-                sys_force_redraw = true;
-                system_mode_render();
+                
+                // ⭐ ТОЛЬКО обновление кубиков, без полной перерисовки!
+                update_mpr121_display();
+                return;
             }
-            // Короткое нажатие = сохранить и выйти
+            
             if (sw_click) {
                 if (mpr_mapping[mpr_selected] != mpr_temp_action) {
                     mpr_mapping[mpr_selected] = mpr_temp_action;
                     mpr_changed[mpr_selected] = true;
                     printf("[MPR] K%d saved as %s (CHANGED)\n", mpr_selected, mpr_full_names[mpr_temp_action]);
                     save_mpr121_mapping();
-                } else {
-                    printf("[MPR] K%d unchanged\n", mpr_selected);
                 }
                 mpr_edit_mode = false;
                 sys_force_redraw = true;
-                system_mode_render();
+                system_mode_render();  // Полная перерисовка для смены footer
+                return;
             }
-            return; // В режиме редактирования НЕ переключаем страницы
+            
+            if (sw_held) {
+                printf("[MPR] Edit canceled\n");
+                mpr_edit_mode = false;
+                sys_force_redraw = true;
+                system_mode_render();  // Полная перерисовка для смены footer
+                return;
+            }
+            
+            return;
         }
-
-        // 3. Обычный режим (НЕ редактирование)
-        // Короткое нажатие = выбор следующей кнопки
-        if (sw_click) {
-            mpr_selected = (mpr_selected + 1) % 12;
+        
+        // === В ОБЫЧНОМ РЕЖИМЕ ===
+        
+        if (enc_delta != 0) {
+            mpr_selected = (mpr_selected + enc_delta + 12) % 12;
             printf("[MPR] Selected K%d (%s)\n", mpr_selected, mpr_full_names[mpr_mapping[mpr_selected]]);
-            sys_force_redraw = true;
-            system_mode_render();
-            // НЕ возвращаемся, чтобы энкодер мог переключить страницу
+            
+            // ⭐ ТОЛЬКО обновление кубиков!
+            update_mpr121_display();
+            return;
         }
-
-        // Если ничего не произошло — позволяем энкодеру переключать страницы
-        // НЕТ return здесь!
-    }
-
-    // ============================================================
-    // СТРАНИЦА 3: Debug Log (переключение по долгому нажатию)
-    // ============================================================
-    if (sys_page_idx == 2 && sw_held) {
-        static bool debug_log_enabled = false;
-        debug_log_enabled = !debug_log_enabled;
-        printf("[SYS] Debug Log %s\n", debug_log_enabled ? "ENABLED" : "DISABLED");
-        sys_force_redraw = true;
-        system_mode_render();
-        return; // Блокируем переключение страниц
-    }
-
-    // ============================================================
-    // ВСЕ СТРАНИЦЫ (включая страницу 2, если не в режиме редактирования)
-    // ============================================================
-    if (enc_delta != 0) {
-        // Проверяем, что мы НЕ на странице 2 ИЛИ НЕ в режиме редактирования
-        if (!(sys_page_idx == 1 && mpr_edit_mode)) {
-            int next = sys_page_idx + enc_delta;
-            if (next < 0) next = SYS_TOTAL_PAGES - 1;
-            if (next >= SYS_TOTAL_PAGES) next = 0;
-            sys_page_idx = (uint8_t)next;
+        
+        if (sw_held) {
+            mpr_edit_mode = true;
+            mpr_temp_action = mpr_mapping[mpr_selected];
+            printf("[MPR] Edit ON for K%d (current: %s)\n", mpr_selected, mpr_full_names[mpr_temp_action]);
+            sys_force_redraw = true;
+            system_mode_render();  // Полная перерисовка для смены footer
+            return;
+        }
+        
+        if (sw_click) {
+            sys_page_idx = (sys_page_idx + 1) % SYS_TOTAL_PAGES;
             printf("[SYS_PAGE]: %d\n", sys_page_idx + 1);
             sys_force_redraw = true;
             system_mode_render();
+            return;
         }
+        
+        return;
+    }
+
+    // ============================================================
+    // СТРАНИЦА 3: Blackbox меню (ОПТИМИЗИРОВАННАЯ ЛОГИКА)
+    // ============================================================
+    if (sys_page_idx == 2) {
+        if (enc_delta != 0) {
+            blackbox_selected_item = (blackbox_selected_item + enc_delta + BLACKBOX_ITEMS) % BLACKBOX_ITEMS;
+            printf("[SYS] Blackbox item %d selected\n", blackbox_selected_item);
+            
+            // ⭐ ТОЛЬКО обновление items, БЕЗ полной перерисовки!
+            update_blackbox_items_display();
+            return;
+        }
+        
+        if (sw_click) {
+            switch(blackbox_selected_item) {
+                case 0: 
+                    g_cli_debug_usb_active = !g_cli_debug_usb_active;
+                    printf("[SYS] USB Trace: %s\n", g_cli_debug_usb_active ? "ON" : "OFF");
+                    break;
+                case 1: 
+                    g_cli_debug_sd_active = !g_cli_debug_sd_active;
+                    printf("[SYS] SD Log: %s\n", g_cli_debug_sd_active ? "ON" : "OFF");
+                    break;
+                case 2: 
+                    printf("[SYS] MIDI Monitor: not implemented\n");
+                    break;
+                case 3: 
+                    printf("[SYS] Debug Chrono: not implemented\n");
+                    break;
+            }
+            
+            // ⭐ ТОЛЬКО обновление items!
+            update_blackbox_items_display();
+            return;
+        }
+        
+        if (sw_held) {
+            sys_page_idx = (sys_page_idx + SYS_TOTAL_PAGES - 1) % SYS_TOTAL_PAGES;
+            printf("[SYS_PAGE]: %d\n", sys_page_idx + 1);
+            sys_force_redraw = true;
+            system_mode_render();
+            return;
+        }
+        
+        return;
+    }
+
+    // ============================================================
+    // ВСЕ ОСТАЛЬНЫЕ СТРАНИЦЫ
+    // ============================================================
+    
+    if (enc_delta != 0) {
+        return;
+    }
+    
+    if (sw_click) {
+        sys_page_idx = (sys_page_idx + 1) % SYS_TOTAL_PAGES;
+        printf("[SYS_PAGE]: %d\n", sys_page_idx + 1);
+        sys_force_redraw = true;
+        system_mode_render();
+        return;
+    }
+    
+    if (sw_held) {
+        sys_page_idx = (sys_page_idx + SYS_TOTAL_PAGES - 1) % SYS_TOTAL_PAGES;
+        printf("[SYS_PAGE]: %d\n", sys_page_idx + 1);
+        sys_force_redraw = true;
+        system_mode_render();
+        return;
     }
 }
 
