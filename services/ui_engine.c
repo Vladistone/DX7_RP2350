@@ -9,15 +9,18 @@ static AppModeState ui_engine_last_mode = MODE_COUNT;
 static uint8_t ui_engine_last_page = 0xFF;
 
 void ui_clear_work_area(void) {
-    clear_rect(0, 24, TFT_WIDTH, TFT_HEIGHT - 24 - 16, current_theme.bg_color);
+    clear_rect(0, 18, TFT_WIDTH, TFT_HEIGHT - 18 - 16, current_theme.bg_color);
 }
 
 void ui_draw_statusbar(const char* mode_tag, bool sd_status, uint8_t midi_ch) {
-    clear_rect(0, 0, TFT_WIDTH, 24, current_theme.bar_bg_color);
-    draw_text_scaled(10, 6, mode_tag, current_theme.bar_text_color, current_theme.bar_bg_color, 1);
+    clear_rect(0, 0, TFT_WIDTH, 18, current_theme.bar_bg_color);
+    draw_text_scaled(10, 2, mode_tag, current_theme.bar_text_color, current_theme.bar_bg_color, 1);
     
-    draw_text_scaled(TFT_WIDTH - 80, 6, "SD:", current_theme.bar_text_color, current_theme.bar_bg_color, 1);
-    draw_text_scaled(TFT_WIDTH - 56, 6, sd_status ? "OK" : "-", sd_status ? 0x07E0 : 0xF800, current_theme.bar_bg_color, 1);
+    draw_text_scaled(TFT_WIDTH - 120, 2, "SD: | CH:16 %d", current_theme.bar_text_color, current_theme.bar_bg_color, 1);
+    //draw_text_scaled(TFT_WIDTH - 80, 2, "CH:", current_theme.bar_text_color, current_theme.bar_bg_color, 1);
+    //draw_text_scaled(TFT_WIDTH - 80, 2, midi_ch, current_theme.bar_text_color, current_theme.bar_bg_color, 1);
+    draw_text_scaled(TFT_WIDTH - 88, 2, sd_status ? "OK" : "--", sd_status ? 0x07E0 : 0xF800, current_theme.bar_bg_color, 1);
+
 }
 
 void ui_draw_footer(const char* footer_text) {
@@ -42,7 +45,7 @@ void ui_render_mode_layout(const char* header, uint8_t cur_page, uint8_t total_p
         // ИСПРАВЛЕНО: Объявляем полноценные строковые массивы в стеке вместо одиночных char
         char header_buf[48];
         if (total_pages > 1) {
-            snprintf(header_buf, sizeof(header_buf), "%s | P.%d", header, cur_page + 1);
+            snprintf(header_buf, sizeof(header_buf), "%s|P.%d/%d", header, cur_page + 1, total_pages);
         } else {
             snprintf(header_buf, sizeof(header_buf), "%s", header);
         }

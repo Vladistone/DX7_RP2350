@@ -1,7 +1,7 @@
 #include "hw_config.h"     // Макрос SD_LOG и прототипы хронографа debug_chrono_...
 #include "sd_review.h"
 #include "sd_storage.h"
-#include "ui_engine.h"     // Абстрактный графический движок на "новых рельсах"
+#include "ui_engine.h"     // Абстрактный графический движок
 #include "pico/stdlib.h"   // Системное время time_us_32()
 #include "midi_uart.h"     // Отправка SysEx через midi_send_sysex
 #include <stdio.h>
@@ -72,7 +72,8 @@ static void sd_review_content_draw(void) {
     if (show_next_button) display_count++;   // +1 строка для [DWN]
 
     if (display_count == 0) {
-        ui_draw_text_rel(10, 20, "EMPTY", current_theme.text_color, 2);
+        ui_draw_text_centered_rel(30, "EMPTY SD SLOT", current_theme.text_color, 2);
+        ui_draw_text_centered_rel(80, "INSERT SD CARD", current_theme.text_color, 2);
         return; 
     }
 

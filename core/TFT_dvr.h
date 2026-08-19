@@ -28,6 +28,7 @@ void tft_init(void);
 void st7789_init_registers(void);
 void show_animated_splash(void);
 void draw_rotating_7(uint16_t center_x, uint16_t center_y, float angle, uint16_t color, uint16_t bg_color, int scale);
+void tft_backlight_set_percent(uint8_t percent);
 
 // Графические примитивы и заливка
 void fill_screen(uint16_t color);

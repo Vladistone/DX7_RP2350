@@ -33,10 +33,37 @@ static void write_data(uint8_t data) {
 void tft_backlight_init(void) {
     gpio_set_function(TFT_BLK_PWM, GPIO_FUNC_PWM);
     uint slice_num = pwm_gpio_to_slice_num(TFT_BLK_PWM);
+    
     pwm_config config = pwm_get_default_config();
-    pwm_config_set_wrap(&config, 65535);
+    pwm_config_set_wrap(&config, 65535); // 16-битный PWM
     pwm_init(slice_num, &config, true);
-    pwm_set_gpio_level(TFT_BLK_PWM, 65535); // Включить подсветку на 100%
+    
+    // Устанавливаем уровень ШИМ на 0 (OFF)
+    pwm_set_gpio_level(TFT_BLK_PWM, 0); 
+}
+
+// Установка яркости подсветки в процентах (0-100%)
+void tft_backlight_set_percent(uint8_t percent) {
+    if (percent > 100) percent = 100;
+    uint16_t level = (uint16_t)((percent / 100.0f) * 65535);
+    pwm_set_gpio_level(TFT_BLK_PWM, level);
+}
+
+// Плавное включение подсветки за указанное время (в миллисекундах)
+void tft_backlight_fade_in(uint16_t duration_ms) {
+    uint slice_num = pwm_gpio_to_slice_num(TFT_BLK_PWM);
+    uint16_t max_level = 65535;
+    uint16_t steps = 100; // Количество шагов для плавности (можно менять)
+    uint16_t step_time_ms = duration_ms / steps;
+    uint16_t step_increment = max_level / steps;
+
+    for (uint16_t level = 0; level <= max_level; level += step_increment) {
+        pwm_set_gpio_level(TFT_BLK_PWM, level);
+        sleep_ms(step_time_ms);
+    }
+    
+    // Гарантируем, что подсветка включена на 100% после завершения
+    pwm_set_gpio_level(TFT_BLK_PWM, max_level);
 }
 
 // ==============================================================================
@@ -70,66 +97,66 @@ void st7789_init_registers(void) {
 }
 
 void tft_init(void) {
+    // --- Инициализация пинов и SPI ---
     gpio_init(TFT_RST); gpio_set_dir(TFT_RST, GPIO_OUT);
     gpio_init(TFT_DC);  gpio_set_dir(TFT_DC, GPIO_OUT);
     gpio_init(TFT_CS);  gpio_set_dir(TFT_CS, GPIO_OUT);
-    
     gpio_put(TFT_CS, 1);
     gpio_put(TFT_RST, 1);
-    
     sleep_ms(100);
     gpio_put(TFT_RST, 0);
     sleep_ms(100);
     gpio_put(TFT_RST, 1);
     sleep_ms(100);
-    
+
     gpio_set_function(TFT_MOSI, GPIO_FUNC_SPI);
     gpio_set_function(TFT_SCLK, GPIO_FUNC_SPI);
-    
     spi_init(spi0, 62500000);
     spi_set_format(spi0, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
-    
     gpio_set_drive_strength(TFT_MOSI, GPIO_DRIVE_STRENGTH_12MA);
     gpio_set_drive_strength(TFT_SCLK, GPIO_DRIVE_STRENGTH_12MA);
     gpio_set_drive_strength(TFT_DC,   GPIO_DRIVE_STRENGTH_12MA);
     gpio_set_drive_strength(TFT_CS,   GPIO_DRIVE_STRENGTH_12MA);
 
-    tft_backlight_init(); // blacklight
-    
+    // --- Инициализация PWM (подсветка ВЫКЛЮЧЕНА) ---
+    tft_backlight_init();
+
+    // --- Инициализация регистров дисплея (подсветка ВЫКЛЮЧЕНА) ---
     st7789_init_registers();
+
+    // --- Запуск заставки, которая сама управляет подсветкой ---
     show_animated_splash();
 }
 
 // ==============================================================================
-// БЛОК 4: ЗАСТАВКА
+// БЛОК 4: ЗАСТАВКА С ОЧЕНЬ ПЛАВНЫМ НАРАСТАНИЕМ ПОДСВЕТКИ
 // ==============================================================================
-
 // Жирная контурная семерка (без заливки)
 void draw_rotating_7(uint16_t center_x, uint16_t center_y, float angle, uint16_t color, uint16_t bg_color, int scale) {
     int idx = '7' - 32;
     if (idx < 0 || idx > 94) return;
-    
+
     int pixel_size = scale * 2;  
     int gap = scale / 2 + 1;
     int step = pixel_size + gap;
-    
+
     int clear_size = (8 * step) / 2 + 15;
-    clear_rect(center_x - clear_size, center_y - clear_size, 
+    draw_rectangle(center_x - clear_size, center_y - clear_size, 
                clear_size * 2, clear_size * 2, bg_color);
-    
+
     for (int row = 0; row < 12; row++) {
         uint8_t row_data = font_8x12[idx][row];
         for (int col = 0; col < 8; col++) {
             if (row_data & (0x80 >> col)) {
                 float dx = (col - 4.0f) * step;
                 float dy = (row - 6.0f) * step;
-                
+
                 float rx = dx * cos(angle) - dy * sin(angle);
                 float ry = dx * sin(angle) + dy * cos(angle);
-                
+
                 int sx = center_x + (int)rx - pixel_size/2;
                 int sy = center_y + (int)ry - pixel_size/2;
-                
+
                 if (sx >= 0 && sx + pixel_size <= TFT_WIDTH && 
                     sy >= OFFSET && sy + pixel_size <= TFT_HEIGHT) {
                     draw_rectangle(sx, sy, pixel_size, pixel_size, color);
@@ -139,89 +166,125 @@ void draw_rotating_7(uint16_t center_x, uint16_t center_y, float angle, uint16_t
     }
 }
 
-// Плавное появление заставки в стиле Yamaha DX7 (с исправленным центром)
+// Функция для очень плавного логарифмического расчёта яркости
+uint8_t calculate_smooth_brightness(float progress, uint8_t max_brightness) {
+    if (progress <= 0) return 0;
+    if (progress >= 1) return max_brightness;
+    
+    // Очень плавная логарифмическая кривая
+    // Используем малую крутизну для более плавного начала
+    float steepness = 2.5f;
+    float brightness = max_brightness * (1 - exp(-steepness * progress));
+    
+    // Дополнительное сглаживание в конце
+    if (brightness > max_brightness) brightness = max_brightness;
+    return (uint8_t)brightness;
+}
+
 void show_animated_splash() {
     fill_screen(0x0000);
-    
+
     uint16_t center_x = TFT_WIDTH / 2;
-    // Даст ровно 85 пикселей (с учетом последующего добавления OFFSET внутри выведет ровно в 120)
     uint16_t center_y = (TFT_HEIGHT - OFFSET) / 2;
-    
+
     uint16_t color_cyan = 0x07FF;
     uint16_t color_white = 0xFFFF;
     uint16_t color_black = 0x0000;
-    
-    // ЭТАП 1: Вращающаяся "7" (Полный оборот 360°)
+
+    // ---- ЭТАП 1: Вращающаяся "7" (ОЧЕНЬ МЕДЛЕННО нарастает до 15%) ----
     int rotate_scale = 5;
-    for (int frame = 0; frame < 24; frame++) {
-        float angle = frame * (2 * 3.14159f / 24);
+    int total_frames = 24;
+    
+    for (int frame = 0; frame < total_frames; frame++) {
+        float angle = frame * (2 * 3.14159f / total_frames);
         draw_rotating_7(center_x, center_y, angle, color_cyan, color_black, rotate_scale);
-        sleep_ms(30);
+        
+        // Очень медленное нарастание: progress от 0 до 0.4 (первые 40% времени)
+        float progress = ((float)frame / total_frames) * 0.4f;
+        uint8_t brightness = calculate_smooth_brightness(progress, 50);
+        tft_backlight_set_percent(brightness);
+        
+        sleep_ms(40); // Увеличили задержку для более медленного вращения
     }
-    
+
     fill_screen(0x0000);
-    
-    // ЭТАП 2: Проявление "YAMAHA"
+
+    // ---- ЭТАП 2: Появление "YAMAHA" (нарастает от 15% до 35%) ----
     int yamaha_scale = 3;
     int spacing = 3;
     int char_width = 8 * yamaha_scale + spacing;
     int text_width = 6 * char_width;
-    
+
     uint16_t yamaha_x = (TFT_WIDTH - text_width) / 2;
-    uint16_t yamaha_y = 30;
-    
-    for (int step = 0; step < 10; step++) {
-        uint16_t brightness = (step + 1) * 2;
-        uint16_t color = (brightness << 11) | (brightness << 6) | brightness;
+    uint16_t yamaha_y = 20;
+
+    for (int step = 0; step < 12; step++) { // Увеличили количество шагов
+        // progress от 0.4 до 0.7 (следующие 30% времени)
+        float progress = 0.4f + ((float)step / 12) * 0.3f;
+        uint8_t brightness = calculate_smooth_brightness(progress, 50);
+        tft_backlight_set_percent(brightness);
+        
+        uint16_t brightness_val = (step + 1) * 2;
+        uint16_t color = (brightness_val << 11) | (brightness_val << 6) | brightness_val;
         draw_text_scaled(yamaha_x, yamaha_y, "YAMAHA", color, color_black, yamaha_scale);
-        sleep_ms(50);
+        sleep_ms(60); // Увеличили задержку
     }
-    
+
     draw_text_scaled(yamaha_x, yamaha_y, "YAMAHA", color_white, color_black, yamaha_scale);
-    
-    // ЭТАП 3: Проявление "DX"
-    sleep_ms(200);
-    
-    int dx_scale = 5;
+
+    // ---- ЭТАП 3: Появление "DX" (нарастает от 35% до 45%) ----
+    sleep_ms(300);
+
+    int dx_scale = 6;
     int dx_spacing = 4;
     int dx_char_width = 8 * dx_scale + dx_spacing;
-    
+
     uint16_t dx_x = (TFT_WIDTH - (2 * dx_char_width + 1 * dx_char_width)) / 2;
     uint16_t dx_y = yamaha_y + 12 * yamaha_scale + 20;
-    
-    for (int step = 0; step < 10; step++) {
-        uint16_t brightness = (step + 1) * 2;
-        uint16_t color = (brightness << 11) | (brightness << 6) | brightness;
+
+    for (int step = 0; step < 12; step++) {
+        // progress от 0.7 до 0.9
+        float progress = 0.7f + ((float)step / 12) * 0.2f;
+        uint8_t brightness = calculate_smooth_brightness(progress, 50);
+        tft_backlight_set_percent(brightness);
+        
+        uint16_t brightness_val = (step + 1) * 2;
+        uint16_t color = (brightness_val << 11) | (brightness_val << 6) | brightness_val;
         draw_text_scaled(dx_x, dx_y, "DX", color, color_black, dx_scale);
-        sleep_ms(50);
+        sleep_ms(60);
     }
-    
+
     draw_text_scaled(dx_x, dx_y, "DX", color_white, color_black, dx_scale);
-    
-    // ЭТАП 4: Появление "7"
-    sleep_ms(300);
-    
+
+    // ---- ЭТАП 4: Появление "7" (достигает 50%) ----
+    sleep_ms(400);
+
     int seven_scale = dx_scale + 3;
     uint16_t seven_x = dx_x + 2 * dx_char_width + 16;
     uint16_t seven_y = dx_y - (16 * (seven_scale - dx_scale) / 2);
-    
-    for (int step = 0; step < 8; step++) {
-        uint16_t brightness = (step + 1) * 2;
-        uint16_t color = (brightness << 11) | (brightness << 6) | brightness;
+
+    for (int step = 0; step < 10; step++) {
+        // progress от 0.9 до 1.0
+        float progress = 0.9f + ((float)step / 10) * 0.1f;
+        uint8_t brightness = calculate_smooth_brightness(progress, 50);
+        tft_backlight_set_percent(brightness);
+        
+        uint16_t brightness_val = (step + 1) * 2;
+        uint16_t color = (brightness_val << 11) | (brightness_val << 6) | brightness_val;
         uint16_t seven_color = ((color & 0xF800) >> 1) | ((color & 0x07E0) >> 1) | ((color & 0x001F) >> 1);
         draw_char_scaled(seven_x, seven_y, '7', seven_color, color_black, seven_scale);
-        sleep_ms(50);
+        sleep_ms(60);
     }
-    
+
     draw_char_scaled(seven_x, seven_y, '7', color_cyan, color_black, seven_scale);
-    
-    // ЭТАП 5: Пульсация "7"
+
+    // ---- ЭТАП 5: Пульсация "7" (стабильно 50%) ----
     for (int pulse = 0; pulse < 3; pulse++) {
-        sleep_ms(300);
+        sleep_ms(400);
         uint16_t seven_color = (pulse % 2 == 0) ? color_cyan : 0x07E0;
         draw_char_scaled(seven_x, seven_y, '7', seven_color, color_black, seven_scale);
     }
-    
+
     sleep_ms(1000);
 }
 

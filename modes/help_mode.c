@@ -29,54 +29,54 @@ static void draw_help_p1_interactive_numpad(void) {
 
 // СТРАНИЦА 2: Гид по энкодеру и SW (Описание заложенного поведения)
 static void draw_help_p2_encoder_guide(void) {
-    ui_draw_text_rel(10, 10, "ROTARY ENC. LED GUIDE:", current_theme.accent_color, 1);
+    ui_draw_text_rel(0, -5, "R.ENC, LED info", current_theme.accent_color, 2);
     
     // Описываем логику манипуляций согласно hw_config.h
-    ui_draw_text_rel(10, 22, "ENC.Turn : F.Scroll / P.Change", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 35, "ENC.SW 14: F.Select / Confirm", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 48, "SYS.MD 23: Switch active Engine", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 61, "LED INT: Blinks during starting", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 74, "LED GRN: Blinks during MIDI RX", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 87, "LED BLU: Blinks during MIDI TX", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 100, "string 8", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 113, "string 9", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 126, "string 10", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 20, "ENC.Turn : F.Scroll / P.Change", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 33, "ENC.SW 14: F.Select / Confirm", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 46, "SYS.MD 23: Switch active Engine", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 59, "LED INT: Blinks during starting", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 72, "LED GRN: Blinks during MIDI RX", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 85, "LED BLU: Blinks during MIDI TX", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 98, "string 8", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 111, "string 9", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 124, "string 10", current_theme.text_color, 1);
 }
 
 // СТРАНИЦА 3: Настройка MIDI-каналов пользователем (Информационный маппинг)
 static void draw_help_p3_midi_channel_config(void) {
-    ui_draw_text_rel(10, 10, "USER MIDI CH CONFIGURATION:", current_theme.accent_color, 1);
+    ui_draw_text_rel(0, -5, "MIDI CH.CONFIG:", current_theme.accent_color, 2);
     
     // Описание алгоритма независимой смены каналов
-    ui_draw_text_rel(10, 30, "Current MIDI Channel map to DX7", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 45, "Navigate to SYS/Config reassign", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 60, "select Page 3, click Encoder SW", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 75, "then rotate, increment CH. 1-16", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 20, "Current MIDI Channel map to DX7", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 33, "Navigate to SYS/Config reassign", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 46, "select Page 3, click Encoder SW", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 59, "then rotate, increment CH. 1-16", current_theme.text_color, 1);
 }
 
 // СТРАНИЦА 4: Таблица CC# -> SysEx Parameters DX7 (Привязка контроллеров)
 static void draw_help_p4_cc_to_sysex_table(void) {
-    ui_draw_text_rel(10, 5, "MIDI CC -> DX7 SysEx PARAMETERS:", current_theme.accent_color, 1);
+    ui_draw_text_rel(0, -5, "CC#->SysEx PARAM", current_theme.accent_color, 2);
     
     // Выводим структурированную шпаргалку маппинга для музыканта
-    ui_draw_text_rel(10, 22, "CC74 > OP1-6 Cutoff SysEx p.12", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 35, "CC71 > OP1-6 Resonance    p.13", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 48, "CC01 > Modulation Wheel   p.01", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 61, "CC07 > Main Voice Volume  p.04", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 74, "CC91 > Reverb/Delay Depth p.20", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 87, "CC93 > Chorus Level Map   p.22", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 20, "CC 74 > OP1-6 Cutoff SysEx p.12", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 33, "CC 71 > OP1-6 Resonance    p.13", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 46, "CC 01 > Modulation Wheel   p.01", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 59, "CC 07 > Main Voice Volume  p.04", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 72, "CC 91 > Reverb/Delay Depth p.20", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 85, "CC 93 > Chorus Level Map   p.22", current_theme.text_color, 1);
 }
 
 // СТРАНИЦА 5: Справочник .syx/.mid и лимиты FatFS (Форматы)
 static void draw_help_p5_formats(void) {
-    ui_draw_text_rel(10, 10, "SD STORAGE FORMAT LIMITS:", current_theme.accent_color, 1);
+    ui_draw_text_rel(0, -5, "SD FORMAT LIMITS", current_theme.accent_color, 2);
     
     // Жесткие правила файловой системы, заложенные в ffconf.h и sd_storage.h
-    ui_draw_text_rel(10, 30, "FAT32 Standard System only", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 45, "MaxFilename: 32 chars Inc.ext", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 60, "Page Buffer: 32 max items/pack", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 75, "Preset File: 32 SYS singlepatch", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 90, "Sequence MIDI: .MID Standard", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 20, "FAT32 Standard System only", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 33, "MaxFilename: 32 chars inc.ext", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 46, "Page Buffer: 32 max items/pack", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 59, "Preset File: 32 SYS singlepatch", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 72, "Seqnc. MIDI:  *.MID Standard", current_theme.text_color, 1);
 }
 
 // Упорядоченный массив страниц USER-интерфейса
@@ -91,7 +91,7 @@ static void (*help_pages[HELP_TOTAL_PAGES])(void) = {
 void help_render(void) {
     // Передаем help_force_redraw напрямую в шлюз ui_engine!
     // Движок сам решит, чистить холст или просто крутить живую графику
-    ui_render_mode_layout("HELP Guide", help_page_idx, HELP_TOTAL_PAGES, help_force_redraw, help_pages[help_page_idx]);
+    ui_render_mode_layout("HELP GUIDE:", help_page_idx, HELP_TOTAL_PAGES, help_force_redraw, help_pages[help_page_idx]);
 
     help_force_redraw = false; // Сбрасываем триггер после отрисовки кадра
 }
@@ -103,7 +103,7 @@ void help_update(uint16_t touched, int enc_delta) {
         if (next >= HELP_TOTAL_PAGES) next = 0;
         help_page_idx = (uint8_t)next;
 
-        printf("[HELP_PAGE]: %d\n", help_page_idx + 1);
+        printf("[HELP_PAGE]: %d/%d\n", help_page_idx + 1, HELP_TOTAL_PAGES);
         help_force_redraw = true; // ВЗВОДИМ ТРИГГЕР ПЕРЕРИСОВКИ КАРКАСА!
         help_render();
     }
@@ -112,6 +112,33 @@ void help_update(uint16_t touched, int enc_delta) {
 // ====================================================================
 // ВНУТРЕННЯЯ РЕАЛИЗАЦИЯ КАРТЫ ТАЧПАДА (СТРОГО В КОНЕЦ ФАЙЛА HELP_MODE.C)
 // ====================================================================
+/*
+    static void draw_sys_p2_mpr121_reassign(void) {
+        const uint16_t COLOR_BTN_BG   = current_theme.bar_bg_color;
+        const uint16_t COLOR_ACTIVE   = 0x07FF;
+        const uint16_t COLOR_EDIT     = 0x07E0;
+        const uint16_t COLOR_CHANGED  = 0xF800;
+        const uint16_t COLOR_BTN_TEXT = 0xFFFF;
+    
+        int start_x = 10;
+        int start_y = 10;
+        int box_w = 70;
+        int box_h = 24;
+        int gap = 5;
+    
+        // Заголовок (статическая часть)
+        ui_draw_text_rel(10, 5, "NUMPAD MAPPING:", COLOR_ACTIVE, 2);
+        
+        // Отрисовка всех кубиков (обновляется через update_mpr121_display)
+        update_mpr121_display();
+        
+        if (mpr_edit_mode) {
+            ui_draw_footer("EDIT: ENC=change | HELD=cancel | DBL=save");
+        } else {
+            ui_draw_footer("CLICK=next | HELD=edit | DBL=mode");
+        }
+    }
+*/
 static void draw_mpr121_visual_map_clean(uint16_t touched, int start_x, int start_y, bool force_redraw) {
     int box_w = 28;
     int box_h = 14;
@@ -123,7 +150,7 @@ static void draw_mpr121_visual_map_clean(uint16_t touched, int start_x, int star
     // Рисуем заголовок карты кнопок относительно переданных координат
     if (force_redraw) {
         // Выводим заголовок через хелпер ui_engine (или draw_text_scaled, если start_y абсолютный)
-        draw_text_scaled(start_x + 46, start_y, "NUMPAD Signatured MAP:", current_theme.accent_color, current_theme.bg_color, 1);
+        draw_text_scaled(start_x, start_y, "NUMPAD Signature MAP", current_theme.accent_color, current_theme.bg_color, 1);
     }
 
     for (int i = 0; i < 12; i++) {
@@ -154,7 +181,6 @@ static void draw_mpr121_visual_map_clean(uint16_t touched, int start_x, int star
             draw_text_scaled(text_x, text_y, num_str, text_color, color, 1);
         }
     }
-    
     // Фиксируем маску тача для следующего кадра (наш сохраненный предпоследний штрих!)
     local_last_mpr_state = touched; 
 }

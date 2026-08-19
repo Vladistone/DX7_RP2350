@@ -20,6 +20,19 @@
 #include <stdio.h>      
 #include <stdarg.h>
 #include <string.h>
+// ПРОТОТИПЫ ФУНКЦИЙ
+static void system_mode_measure_voltage(void);
+static float read_dx7_vin_voltage(void);
+static void draw_sys_p1_hardware_stats(void);
+static void draw_sys_p2_mpr121_reassign(void);
+static void draw_sys_p3_blackbox_menu(void);
+static void draw_sys_p4_project_struct(void);
+static void draw_sys_p5_pinout(void);
+static void handle_mpr121_edit(int enc_delta, bool sw_pressed, bool sw_held);
+static void load_mpr121_mapping(void);
+static void save_mpr121_mapping(void);
+static void update_mpr121_display(void);
+static void update_blackbox_items_display(void);
 
 // ============ ПЕРЕМЕННЫЕ ============
 static uint8_t sys_page_idx = 0;
@@ -63,20 +76,6 @@ static uint16_t sys_sel_color(int line_idx) {
     return (selected_item == line_idx) ? current_theme.accent_color : current_theme.text_color;
 }
 
-// ** ПРОТОТИПЫ ФУНКЦИЙ **
-static void system_mode_measure_voltage(void);
-static float read_dx7_vin_voltage(void);
-static void draw_sys_p1_hardware_stats(void);
-static void draw_sys_p2_mpr121_reassign(void);
-static void draw_sys_p3_blackbox_menu(void);
-static void draw_sys_p4_project_struct(void);
-static void draw_sys_p5_pinout(void);
-static void handle_mpr121_edit(int enc_delta, bool sw_pressed, bool sw_held);
-static void load_mpr121_mapping(void);
-static void save_mpr121_mapping(void);
-static void update_mpr121_display(void);
-static void update_blackbox_items_display(void);
-
 #define MPR121_MAP_PATH "map/mpr121.map"
 
 // Действия (сокращённые названия для кнопок)
@@ -105,107 +104,7 @@ static uint8_t mpr_mapping[12] = {
     MPR_ACTION_STOP, MPR_ACTION_PLAY, MPR_ACTION_FF, MPR_ACTION_RW
 };
 
-/// перед draw_sys_p2_mpr121_reassign
-static void update_mpr121_display(void) {
-    const uint16_t COLOR_BTN_BG   = current_theme.bar_bg_color;
-    const uint16_t COLOR_ACTIVE   = 0x07FF;
-    const uint16_t COLOR_EDIT     = 0x07E0;
-    const uint16_t COLOR_CHANGED  = 0xF800;
-    const uint16_t COLOR_BTN_TEXT = 0xFFFF;
-
-    int start_x = 10;
-    int start_y = 35;  // Относительная координата (от UI_WORK_Y)
-    int box_w = 70;
-    int box_h = 24;
-    int gap = 5;
-
-    uint16_t touched = mpr121_read_touched();
-
-    for (int i = 0; i < 12; i++) {
-        int col = i % 4;
-        int row = i / 4;
-        int x = start_x + col * (box_w + gap);
-        int y = start_y + row * (box_h + gap);
-
-        bool is_pressed = (touched & (1 << i)) != 0;
-        bool is_selected = (i == mpr_selected);
-        bool is_editing = (is_selected && mpr_edit_mode);
-        bool is_changed = mpr_changed[i];
-
-        uint16_t bg_color   = COLOR_BTN_BG;
-        uint16_t text_color = COLOR_BTN_TEXT; 
-
-        if (is_selected && !is_pressed) {
-            bg_color   = COLOR_BTN_BG;
-            text_color = COLOR_ACTIVE;
-        }
-
-        if (is_pressed) {
-            bg_color   = COLOR_ACTIVE;
-            text_color = COLOR_BTN_TEXT;
-        }
-
-        if (is_editing) {
-            bg_color   = COLOR_EDIT;
-            text_color = COLOR_BTN_TEXT;
-        }
-
-        if (is_changed && !is_selected && !is_pressed && !is_editing) {
-            text_color = COLOR_CHANGED;
-        }
-
-        // ⚠️ clear_rect использует АБСОЛЮТНЫЕ координаты
-        // Прибавляем UI_WORK_Y (24) к Y-координате
-        int abs_x = x;
-        int abs_y = UI_WORK_Y + y;
-        clear_rect(abs_x, abs_y, box_w, box_h, bg_color);
-        
-        // Отрисовка рамки (тоже с абсолютными координатами)
-        clear_rect(abs_x, abs_y, box_w, 1, COLOR_BTN_TEXT);             
-        clear_rect(abs_x, abs_y + box_h - 1, box_w, 1, COLOR_BTN_TEXT); 
-        clear_rect(abs_x, abs_y, 1, box_h, COLOR_BTN_TEXT);             
-        clear_rect(abs_x + box_w - 1, abs_y, 1, box_h, COLOR_BTN_TEXT); 
-
-        // ✅ Используем ui_draw_text_rel() с ОТНОСИТЕЛЬНЫМИ координатами
-        char buf[8];
-        uint8_t action = mpr_mapping[i];
-        snprintf(buf, sizeof(buf), "%.6s", mpr_short_names[action]);
-        ui_draw_text_rel(x + 6, y + 6, buf, text_color, 1);  // ← заменили draw_text_scaled на ui_draw_text_rel
-    }
-}
-
-// ⭐ ПЕРЕМЕСТИТЬ СЮДА (перед draw_sys_p3_blackbox_menu)
-static void update_blackbox_items_display(void) {
-    char buf[32];
-
-    // Очищаем ТОЛЬКО область значений (правая часть) - ИСПОЛЬЗУЕМ АБСОЛЮТНЫЕ КООРДИНАТЫ!
-    // Так как clear_rect() работает с абсолютными координатами,
-    // прибавляем UI_WORK_Y (24 пикселя) к каждой координате Y
-    clear_rect(140, 24 + 38, 80, 12, current_theme.bg_color);  // 24 + 38 = 62
-    clear_rect(140, 24 + 52, 80, 12, current_theme.bg_color);  // 24 + 52 = 76
-    clear_rect(140, 24 + 66, 80, 12, current_theme.bg_color);  // 24 + 66 = 90
-    clear_rect(140, 24 + 80, 80, 12, current_theme.bg_color);  // 24 + 80 = 104
-
-    // Item 1: USB Trace - ИСПОЛЬЗУЕМ ОТНОСИТЕЛЬНУЮ ФУНКЦИЮ
-    uint16_t color = (blackbox_selected_item == 0) ? 0x07FF : current_theme.text_color;
-    snprintf(buf, sizeof(buf), "%s", g_cli_debug_usb_active ? "[ENABLED]" : "[DISABLED]");
-    ui_draw_text_rel(140, 40, buf, color, 1);  // ← ЗАМЕНИЛИ draw_text_scaled на ui_draw_text_rel
-
-    // Item 2: SD Card
-    color = (blackbox_selected_item == 1) ? 0x07FF : current_theme.text_color;
-    snprintf(buf, sizeof(buf), "%s", g_cli_debug_sd_active ? "[ENABLED]" : "[DISABLED]");
-    ui_draw_text_rel(140, 54, buf, color, 1);  // ← ЗАМЕНИЛИ
-
-    // Item 3: MIDI Monitor
-    color = (blackbox_selected_item == 2) ? 0x07FF : current_theme.text_color;
-    ui_draw_text_rel(140, 68, "[OFF]", color, 1);  // ← ЗАМЕНИЛИ
-
-    // Item 4: Debug Chrono
-    color = (blackbox_selected_item == 3) ? 0x07FF : current_theme.text_color;
-    ui_draw_text_rel(140, 82, "[ON]", color, 1);  // ← ЗАМЕНИЛИ
-}
-
-// Полный порядок в system_mode.c (структура)
+// СТРУКТУРА system_mode.c
 // 1. Заголовки
 // 2. Статические переменные (sys_page_idx, sys_force_redraw, ...)
 // 3. Определение MprAction и mpr_short_names
@@ -214,6 +113,16 @@ static void update_blackbox_items_display(void) {
 // 6. Массив sys_pages
 // 7. Реализация system_mode_render()
 // 8. Реализация system_mode_update()
+// ====================================================================
+// МАССИВ СТРАНИЦ
+// ====================================================================
+static void (*sys_pages[SYS_TOTAL_PAGES])(void) = {
+    draw_sys_p1_hardware_stats,
+    draw_sys_p2_mpr121_reassign,    // <-- Сложная страница /EDIT func
+    draw_sys_p3_blackbox_menu,      // <-- Сложная страница /EDIT func
+    draw_sys_p4_project_struct,     // <-- простая страница
+    draw_sys_p5_pinout
+};
 
 // ====================================================================
 // ИНИЦИАЛИЗАЦИЯ ADC (вызывается один раз при входе в режим)
@@ -295,10 +204,10 @@ static void system_mode_measure_voltage(void) {
 static void draw_sys_p1_hardware_stats(void) {
     printf("[SYS] draw_p1\n");
     char buf[64];
-    int current_y = 30;
-    const int line_step = 14;
+    int current_y = 20;
+    const int line_step = 15;
     const uint16_t COLOR_ALERT_RED = 0xF800;
-    ui_draw_text_rel(0, 5, "HARDWARE DIAGNOS:", current_theme.accent_color, 2);
+    ui_draw_text_rel(0, -5, "HARDWARE DIAGNOS:", current_theme.accent_color, 2);
 
     // 1. ЧАСТОТА И АРХИТЕКТУРА ЯДРА
     uint32_t cpu_hz = clock_get_hz(clk_sys) / 1000000;
@@ -362,76 +271,214 @@ static void draw_sys_p1_hardware_stats(void) {
     ui_draw_text_rel(10, current_y, buf, i2c_color, 1);
 }
 
+/// перед draw_sys_p2_mpr121_reassign
+static void update_mpr121_display(void) {
+    const uint16_t COLOR_BTN_BG   = current_theme.bar_bg_color;
+    const uint16_t COLOR_ACTIVE   = 0x07FF;
+    const uint16_t COLOR_EDIT     = 0x07E0;
+    const uint16_t COLOR_CHANGED  = 0xF800;
+    const uint16_t COLOR_BTN_TEXT = 0xFFFF;
 
-    // ====================================================================
-    // ЦВЕТОВАЯ ПАЛИТРА (СТРОГО НА ОСНОВЕ ui_theme.c
-    // ====================================================================
-    static void draw_sys_p2_mpr121_reassign(void) {
-        const uint16_t COLOR_BTN_BG   = current_theme.bar_bg_color;
-        const uint16_t COLOR_ACTIVE   = 0x07FF;
-        const uint16_t COLOR_EDIT     = 0x07E0;
-        const uint16_t COLOR_CHANGED  = 0xF800;
-        const uint16_t COLOR_BTN_TEXT = 0xFFFF;
-    
-        int start_x = 10;
-        int start_y = 10;
-        int box_w = 70;
-        int box_h = 24;
-        int gap = 5;
-    
-        // Заголовок (статическая часть)
-        ui_draw_text_rel(10, 5, "NUMPAD MAPPING:", COLOR_ACTIVE, 2);
-        
-        // Отрисовка всех кубиков (обновляется через update_mpr121_display)
-        update_mpr121_display();
-        
-        if (mpr_edit_mode) {
-            ui_draw_footer("EDIT: ENC=change | HELD=cancel | DBL=save");
-        } else {
-            ui_draw_footer("CLICK=next | HELD=edit | DBL=mode");
-        }
-    }
+    int start_x = 10;
+    int start_y = 35;  // Относительная координата (от UI_WORK_Y)
+    int box_w = 70;
+    int box_h = 24;
+    int gap = 5;
 
-    // ============================================================
-    // СТРАНИЦА 3: Blackbox меню (специальная логика)
-    // ============================================================
-    static void draw_sys_p3_blackbox_menu(void) {
-        // Статическая отрисовка заголовка и структуры (только при смене страницы)
-        char buf[64];
+    uint16_t touched = mpr121_read_touched();
 
-        // Заголовок страницы
-        ui_draw_text_rel(0, 5, "BLACKBOX LOGGING", current_theme.accent_color, 2);
+    for (int i = 0; i < 12; i++) {
+        int col = i % 4;
+        int row = i / 4;
+        int x = start_x + col * (box_w + gap);
+        int y = start_y + row * (box_h + gap);
 
-        // Разделительная линия (опционально)
-        //clear_rect(10, 28, TFT_WIDTH - 20, 1, current_theme.bar_bg_color);
+        bool is_pressed = (touched & (1 << i)) != 0;
+        bool is_selected = (i == mpr_selected);
+        bool is_editing = (is_selected && mpr_edit_mode);
+        bool is_changed = mpr_changed[i];
 
-        // Пункты меню (структура)
-        ui_draw_text_rel(10, 40, "1. USB Bug Trace:", current_theme.text_color, 1);
-        ui_draw_text_rel(10, 54, "2. SD Card Logger:", current_theme.text_color, 1);
-        ui_draw_text_rel(10, 68, "3. MIDI Monitor:", current_theme.text_color, 1);
-        ui_draw_text_rel(10, 82, "4. Debug Chrono:", current_theme.text_color, 1);
+        uint16_t bg_color   = COLOR_BTN_BG;
+        uint16_t text_color = COLOR_BTN_TEXT; 
 
-        if (bb_edit_mode) {
-            ui_draw_footer("EDIT: ENC=toggle | HELD=cancel | DBL=save");
-        } else {
-            ui_draw_footer("CLICK=next | HELD=edit | DBL=mode");
+        if (is_selected && !is_pressed) {
+            bg_color   = COLOR_BTN_BG;
+            text_color = COLOR_ACTIVE;
         }
 
-        // Динамическая часть - состояние items (обновляется отдельно)
-        update_blackbox_items_display();
+        if (is_pressed) {
+            bg_color   = COLOR_ACTIVE;
+            text_color = COLOR_BTN_TEXT;
+        }
+
+        if (is_editing) {
+            bg_color   = COLOR_EDIT;
+            text_color = COLOR_BTN_TEXT;
+        }
+
+        if (is_changed && !is_selected && !is_pressed && !is_editing) {
+            text_color = COLOR_CHANGED;
+        }
+
+        // ⚠️ clear_rect использует АБСОЛЮТНЫЕ координаты
+        // Прибавляем UI_WORK_Y (24) к Y-координате
+        int abs_x = x;
+        int abs_y = UI_WORK_Y + y;
+        clear_rect(abs_x, abs_y, box_w, box_h, bg_color);
+        
+        // Отрисовка рамки (тоже с абсолютными координатами)
+        clear_rect(abs_x, abs_y, box_w, 1, COLOR_BTN_TEXT);             
+        clear_rect(abs_x, abs_y + box_h - 1, box_w, 1, COLOR_BTN_TEXT); 
+        clear_rect(abs_x, abs_y, 1, box_h, COLOR_BTN_TEXT);             
+        clear_rect(abs_x + box_w - 1, abs_y, 1, box_h, COLOR_BTN_TEXT); 
+
+        // ✅ Используем ui_draw_text_rel() с ОТНОСИТЕЛЬНЫМИ координатами
+        char buf[8];
+        uint8_t action = mpr_mapping[i];
+        snprintf(buf, sizeof(buf), "%.6s", mpr_short_names[action]);
+        ui_draw_text_rel(x + 6, y + 6, buf, text_color, 1);  // ← заменили draw_text_scaled на ui_draw_text_rel
     }
+}
+
+// ====================================================================
+// MAP-ОТРИСОВКА СТР 2 (ЦВЕТОВАЯ ПАЛИТРА НА ОСНОВЕ ui_theme.c)
+// ====================================================================
+static void draw_sys_p2_mpr121_reassign(void) {
+    const uint16_t COLOR_BTN_BG   = current_theme.bar_bg_color;
+    const uint16_t COLOR_ACTIVE   = 0x07FF;
+    const uint16_t COLOR_EDIT     = 0x07E0;
+    const uint16_t COLOR_CHANGED  = 0xF800;
+    const uint16_t COLOR_BTN_TEXT = 0xFFFF;
+
+    int start_x = 10;
+    int start_y = 5;
+    int box_w = 70;
+    int box_h = 24;
+    int gap = 5;
+
+    // Заголовок (статическая часть)
+    ui_draw_text_rel(10, -5, "NUMPAD MAPPING:", COLOR_ACTIVE, 2);
+    
+    // Отрисовка всех кубиков (обновляется через update_mpr121_display)
+    update_mpr121_display();
+    
+    if (mpr_edit_mode) {
+        ui_draw_footer("EDIT: ENC=change | HELD=cancel | DBL=save");
+    } else {
+        ui_draw_footer("CLICK=next | HELD=edit | DBL=mode");
+    }
+}
+
+// ============================================================
+// СТРАНИЦА 3: Blackbox меню (специальная логика)
+// ============================================================
+static void update_blackbox_items_display(void) {
+    char buf[32];
+
+    // Очищаем ТОЛЬКО область значений (правая часть) - ИСПОЛЬЗУЕМ АБСОЛЮТНЫЕ КООРДИНАТЫ!
+    // Так как clear_rect() работает с абсолютными координатами,
+    // прибавляем UI_WORK_Y (16/24 пикселя) к каждой координате Y
+    clear_rect(180, 16 + 33, 80, 12, current_theme.bg_color);  // 24 + 38 = 62
+    clear_rect(180, 16 + 46, 80, 12, current_theme.bg_color);  // 24 + 52 = 76
+    clear_rect(180, 16 + 59, 80, 12, current_theme.bg_color);  // 24 + 66 = 90
+    clear_rect(180, 16 + 72, 80, 12, current_theme.bg_color);  // 24 + 80 = 104
+
+    // Item 1: USB Trace - ИСПОЛЬЗУЕМ ОТНОСИТЕЛЬНУЮ ФУНКЦИЮ
+    uint16_t color = (blackbox_selected_item == 0) ? 0x07FF : current_theme.text_color;
+    snprintf(buf, sizeof(buf), "%s", g_cli_debug_usb_active ? "[ENABLED]" : "[DISABLED]");
+    ui_draw_text_rel(180, 16 + 20, buf, color, 1);  // 36 ← ЗАМЕНИЛИ draw_text_scaled на ui_draw_text_rel
+
+    // Item 2: SD Card
+    color = (blackbox_selected_item == 1) ? 0x07FF : current_theme.text_color;
+    snprintf(buf, sizeof(buf), "%s", g_cli_debug_sd_active ? "[ENABLED]" : "[DISABLED]");
+    ui_draw_text_rel(180, 16 + 33, buf, color, 1);  // 54 ← ЗАМЕНИЛИ
+
+    // Item 3: MIDI Monitor
+    color = (blackbox_selected_item == 2) ? 0x07FF : current_theme.text_color;
+    ui_draw_text_rel(180, 16 + 46, g_cli_debug_sd_active ? "[OFF]" : "[ON]", color, 1);  // 68 ← ЗАМЕНИЛИ
+
+    // Item 4: Debug Chrono
+    color = (blackbox_selected_item == 3) ? 0x07FF : current_theme.text_color;
+    ui_draw_text_rel(180, 16 + 59, g_cli_debug_sd_active ? "[OFF]" : "[ON]", color, 1);  // 82 ← ЗАМЕНИЛИ
+}
+
+static void draw_sys_p3_blackbox_menu(void) {
+    // Статическая отрисовка заголовка и структуры (только при смене страницы)
+    char buf[64];
+
+    // Заголовок страницы
+    ui_draw_text_rel(0, -5, "BLACKBOX LOGGING", current_theme.accent_color, 2);
+
+    // Разделительная линия (опционально)
+    //clear_rect(10, 28, TFT_WIDTH - 20, 1, current_theme.bar_bg_color);
+
+    // Пункты меню (структура)
+    ui_draw_text_rel(0, 36, "1.USB BUG Tracer:", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 49, "2.SD Card Logger:", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 62, "3.MIDI Monitoring:", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 75, "4.Debug time Stamp:", current_theme.text_color, 1);
+
+    if (bb_edit_mode) {
+        ui_draw_footer("EDIT: ENC=toggle | HELD=cancel | DBL=save");
+    } else {
+        ui_draw_footer("CLICK=next | HELD=edit | DBL=mode");
+    }
+
+    // Динамическая часть - состояние items (обновляется отдельно)
+    update_blackbox_items_display();
+}
 
 // ====================================================================
 // СТРАНИЦА 4: СТРУКТУРА ПРОЕКТА
 // ====================================================================
 static void draw_sys_p4_project_struct(void) {
     printf("[SYS] draw_p4\n");
-    ui_draw_text_rel(0, 15, "PROJECT STRUCTURE:", current_theme.accent_color, 2);
-    ui_draw_text_rel(10, 30, "core/    - TFT, ENC, NUM PAD, SD", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 43, "modes/   - PLAY, HELP, SYS modes", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 56, "services/- UI, MIDI, SysEx", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 69, "lib/     - FatFS, MPR121", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 82, "mapping/ - CC->SysEx map TABLE", current_theme.text_color, 1);
+    ui_draw_text_rel(0, -5, "PROJECT STRUCTURE", current_theme.accent_color, 2);
+    ui_draw_text_rel(0, 20, "CORE/   - TFT, ENC, NUMPAD, SD", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 33, "MODES/  - PLAY, HELP, SYS modes", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 46, "SERVICE/  UI, MIDI, SysEx", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 59, "LIB/    - FatFS, MPR121", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 72, "MAPPING/  CC->SysEx MAP TABLE", current_theme.text_color, 1);
+/*
+    DX7_RP2350/
+├── CMakeLists.txt
+├── hw_config.h
+├── main.c
+├── pico_sdk_import.cmake
+│
+├── core/
+│   ├── encoder_dvr.*
+│   ├── numpad_dvr.*
+│   ├── midi_uart.*
+│   ├── SD_card.*
+│   ├── TFT_dvr.*
+│   └── usb_descriptors.*
+│
+├── services/
+│   ├── sysex_cc_map.*
+│   ├── sd_storage.*
+│   ├── ui_engine.*
+│   ├── font.*
+│   └── debug_log.*
+│
+├── modes/
+│   ├── 1 play_mode.c
+│   ├── 2 Arp_mode.c
+│   ├── 3 midi_bridge_mode.c
+│   ├── 4 sd_review.c
+│   ├── 5 usb_sd_mode.c
+│   ├── 6 Help_mode.c
+│   ├── 7 system_mode.c
+│   └── 8 modes.h
+│
+└── mapping/
+    ├── mapping.h
+    ├── map_default.c
+    ├── map_nucleus2.c
+    ├── map_nano2.c
+    ├── map_LX25P.c
+    └── map_arturia.c
+    */
 }
 
 // ====================================================================
@@ -439,39 +486,23 @@ static void draw_sys_p4_project_struct(void) {
 // ====================================================================
 static void draw_sys_p5_pinout(void) {
     printf("[SYS] draw_p5\n");
-    ui_draw_text_rel(0, 5, "RP2350 HW PINOUT:", current_theme.accent_color, 2);
-    ui_draw_text_rel(10, 30, "GP 4/5  - Rotary Encoder", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 43, "GP 6/7  - I2C NUMPAD SDA/CLK", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 56, "GP 14   - ENC Switch_1", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 69, "GP 22   - TFT BLK_PWM", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 82, "GP 23   - MODE Switch_2", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 95, "GP 26   - Vin ADC (DX7)", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 108, "SPI_0   - TFT LCD", current_theme.accent_color, 1);
-    ui_draw_text_rel(10, 121, "GP 0    - TFT_DC", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 134, "GP 1    - TFT_CS", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 147, "GP 2    - TFT_SCLK", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 160, "GP 3    - TFT_MOSI", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 173, "GP 15   - TFT_RST", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 186, "SPI_1   - SD Card",current_theme.accent_color 1); // 4. SD Card (SPI1)
-    ui_draw_text_rel(10, 199, "GP 8   - SD_MISO", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 212, "GP 9   - SD_CS", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 235, "GP 10   - SD_SCK", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 248, "GP 11   - SD_MOSI", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 261, "UART_0   - MIDI RX/TX", current_theme.accent_color, 1);
-    ui_draw_text_rel(10, 274, "GP 12   - MIDI TX", current_theme.text_color, 1);
-    ui_draw_text_rel(10, 287, "GP 13   - MIDI RX", current_theme.text_color, 1);
+    ui_draw_text_rel(0, -5, "RP2350 HW PINOUT", current_theme.accent_color, 2);
+    //ui_draw_text_rel(0, 20, "GP 4/5  - Rotary Encoder", current_theme.text_color, 1);
+    //ui_draw_text_rel(0, 33, "GP 6/7  - I2C NUMPAD SDA/CLK", current_theme.text_color, 1);
+    //ui_draw_text_rel(0, 46, "GP 14   - R.ENC Switch 1", current_theme.text_color, 1);
+    //ui_draw_text_rel(0, 59, "GP 22   - TFT BLK_PWM", current_theme.text_color, 1);
+    //ui_draw_text_rel(0, 72, "GP 23   - MODE Switch 2", current_theme.text_color, 1);
+    //ui_draw_text_rel(0, 85, "GP 26   - Vin ADC (DX7)", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 20, "SPI_0 - TFT LCD |SPI_1 - SD Card", current_theme.accent_color, 1);
+    ui_draw_text_rel(0, 33, "GP 0  - TFT_DC | GP 8  - SD_MISO", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 46, "GP 1  - TFT_CS | GP 9  - SD_CS", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 59, "GP 2  - TFT_SCLK|GP 10 - SD_SCK", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 72, "GP 3  - TFT_MOSI|GP 11 - SD_MOSI", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 85, "GP 15 - TFT_RST |GP 22 - TFT BLK_PWM", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 98, "UART  - MIDI RX/TX", current_theme.accent_color, 1);
+    ui_draw_text_rel(0, 111, "GP 12 - MIDI TX", current_theme.text_color, 1);
+    ui_draw_text_rel(0, 124, "GP 13 - MIDI RX", current_theme.text_color, 1);
 }
-
-// ====================================================================
-// МАССИВ СТРАНИЦ
-// ====================================================================
-static void (*sys_pages[SYS_TOTAL_PAGES])(void) = {
-    draw_sys_p1_hardware_stats,
-    draw_sys_p2_mpr121_reassign,    // <-- Сложная страница
-    draw_sys_p3_blackbox_menu,      // <-- простая страница
-    draw_sys_p4_project_struct,
-    draw_sys_p5_pinout
-};
 
 // ====================================================================
 // ПУБЛИЧНЫЕ ФУНКЦИИ
@@ -508,7 +539,7 @@ void system_mode_update(uint16_t touched, int enc_delta, bool sw_held) {
     
     // ЛОГИКА ДЛЯ ЭНКОДЕРА (Blackbox)
     uint8_t click_type = encoder_get_click_type(); // 0=нет, 1=одиночный, 2=двойной
-    printf("click_type %s\n", click_type);
+    printf("click_type %d\n", click_type);
     bool sw_click = (click_type == 1);
     bool sw_double_click_enc = (click_type == 2);
 
