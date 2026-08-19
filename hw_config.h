@@ -24,6 +24,7 @@
 #define I2C_SDA_PIN 6
 #define I2C_SCL_PIN 7
 #define MPR121_ADDR 0x5A
+//#define MPR121_RST_PIN 16  // Если есть вывод RST на MPR121
 
 // 4. SD Card (SPI1)
 #define SD_SPI_PORT   spi1

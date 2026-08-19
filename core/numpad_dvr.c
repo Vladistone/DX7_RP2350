@@ -3,71 +3,112 @@
 #include "hardware/i2c.h"
 #include "hw_config.h"
 
+// Флаг, что MPR121 уже инициализирован
+static bool mpr121_initialized = false;
+
 void mpr121_init(void) {
-    i2c_init(I2C_PORT, 400 * 1000);
+    // Если уже инициализирован — просто выводим сообщение и выходим
+    if (mpr121_initialized) {
+        printf("[MPR] Already initialized, skipping\n");
+        return;
+    }
+
+    // Инициализация I2C
+    i2c_init(I2C_PORT, 100 * 1000);
     gpio_set_function(I2C_SDA_PIN, GPIO_FUNC_I2C);
     gpio_set_function(I2C_SCL_PIN, GPIO_FUNC_I2C);
     gpio_pull_up(I2C_SDA_PIN);
     gpio_pull_up(I2C_SCL_PIN);
 
-    // 0. Проверка наличия чипа  (просто отправляем адрес)
-    uint8_t reg = 0x00;
-    uint8_t data[2];
+    // 1. Проверка наличия чипа
     int res = i2c_write_blocking(I2C_PORT, MPR121_ADDR, NULL, 0, false);
     if (res < 0) {
         printf("[MPR] ERROR: Chip not responding at 0x%02X\n", MPR121_ADDR);
         return;
     }
-    
-    // 1. Сброс (Stop Mode)
-    uint8_t stop_cmd[] = {0x7B, 0x00}; // было 0x5E
-    i2c_write_blocking(I2C_PORT, MPR121_ADDR, stop_cmd, 2, false);
+    printf("[MPR] Chip found at 0x%02X\n", MPR121_ADDR);
 
-    // 2. Пороги срабатывания/отпускания для 12 электродов (опционально)
+    // 2. Чтение версии
+    uint8_t ver_reg = 0x73;
+    uint8_t version = 0;
+    i2c_write_blocking(I2C_PORT, MPR121_ADDR, &ver_reg, 1, true);
+    i2c_read_blocking(I2C_PORT, MPR121_ADDR, &version, 1, false);
+    printf("[MPR] Version: 0x%02X\n", version);
+
+    // 3. Сброс чипа через STOP mode (без Software Reset, который не работает)
+    uint8_t stop_cmd[] = {0x7B, 0x00};
+    res = i2c_write_blocking(I2C_PORT, MPR121_ADDR, stop_cmd, 2, false);
+    if (res < 0) {
+        printf("[MPR] STOP mode failed!\n");
+        return;
+    }
+    sleep_ms(50);
+    printf("[MPR] STOP mode set\n");
+
+    // 4. Настройка фильтра (MHD, NHD, NCL)
+    uint8_t filter_cmd[] = {0x5E, 0x2F};
+    i2c_write_blocking(I2C_PORT, MPR121_ADDR, filter_cmd, 2, false);
+
+    // 5. Настройка заряда/разряда (CDT)
+    uint8_t cdt_cmd[] = {0x5F, 0x02};
+    i2c_write_blocking(I2C_PORT, MPR121_ADDR, cdt_cmd, 2, false);
+
+    // 6. Настройка максимальной ёмкости
+    uint8_t max_cap_cmd[] = {0x6B, 0x10};
+    i2c_write_blocking(I2C_PORT, MPR121_ADDR, max_cap_cmd, 2, false);
+
+    // 7. Настройка порогов
+    uint8_t touch_threshold = 8;
+    uint8_t release_threshold = 4;
+    
     for (int i = 0; i < 12; i++) {
-        uint8_t touch_thresh[] = {0x41 + (i * 2), 12}; // Touch Threshold
-        uint8_t release_thresh[] = {0x42 + (i * 2), 6}; // Release Threshold
-        i2c_write_blocking(I2C_PORT, MPR121_ADDR, touch_thresh, 2, false);
-        i2c_write_blocking(I2C_PORT, MPR121_ADDR, release_thresh, 2, false);
+        uint8_t touch_cmd[] = {0x41 + (i * 2), touch_threshold};
+        uint8_t release_cmd[] = {0x42 + (i * 2), release_threshold};
+        i2c_write_blocking(I2C_PORT, MPR121_ADDR, touch_cmd, 2, false);
+        i2c_write_blocking(I2C_PORT, MPR121_ADDR, release_cmd, 2, false);
+    }
+    printf("[MPR] Thresholds: Touch=%d, Release=%d\n", touch_threshold, release_threshold);
+
+    // 8. Включение всех 12 электродов (RUN mode)
+    uint8_t run_cmd[] = {0x7B, 0x0C};
+    res = i2c_write_blocking(I2C_PORT, MPR121_ADDR, run_cmd, 2, false);
+    if (res < 0) {
+        printf("[MPR] RUN mode failed!\n");
+        return;
+    }
+    sleep_ms(100);
+    printf("[MPR] RUN mode set\n");
+
+    // 9. Калибровка
+    printf("[MPR] Calibrating...\n");
+    for (int i = 0; i < 20; i++) {
+        mpr121_read_touched();
+        sleep_ms(50);
     }
 
-    // 3. Включение всех 12 электродов (байт 0x0F включает электроды 0-3, 0xFF - все 12?)
-    // Согласно даташиту, биты 0-11 соответствуют электродам 0-11.
-    // Чтобы включить все 12, нужно записать 0x0F в регистр 0x7B? НЕТ! 0x0F включает только 4 электрода.
-    // Для включения всех 12 электродов нужно записать 0xFF в регистр 0x7B? 
-    // Снова нет. В MPR121 регистр 0x7B - это Electrode Enable (биты 0-11). 
-    // Чтобы включить 12 электродов, нужно записать 0x0F в регистр 0x7B? 
-    // Стоп. В даташите MPR121: регистр 0x7B (ELE_CFG) - это Electrode Configuration.
-    // Бит 0-3: ELE_CFG (количество включенных электродов).
-    // 0x00 = STOP, 0x01 = 1 электрод, 0x02 = 2 электрода, ..., 0x0C = 12 электродов.
-    // ПРАВИЛЬНО: для 12 электродов нужно записать 0x0C в регистр 0x7B!
-    uint8_t run_cmd[] = {0x7B, 0x0C}; // было 0x5E
-    i2c_write_blocking(I2C_PORT, MPR121_ADDR, run_cmd, 2, false);
+    // 10. Проверка статуса
+    uint8_t status = 0x00;
+    i2c_write_blocking(I2C_PORT, MPR121_ADDR, &status, 1, true);
+    i2c_read_blocking(I2C_PORT, MPR121_ADDR, &status, 1, false);
+    printf("[MPR] Status: 0x%02X\n", status);
+
+    mpr121_initialized = true;
+    printf("[MPR] Initialized successfully\n");
 }
 
-uint16_t mpr121_read_touched( void) {
-    //uint8_t reg = 0x00;
-    uint8_t data[ 2] = { 0};
-    uint8_t reg = 0x73;
-    //uint8_t data = 0;
+uint16_t mpr121_read_touched(void) {
+    uint8_t reg = 0x00;
+    uint8_t data[2] = {0};
 
-    i2c_write_blocking(I2C_PORT, MPR121_ADDR, &reg, 1, true);
-    i2c_read_blocking(I2C_PORT, MPR121_ADDR, &data, 1, false);
-    printf("[MPR] Version: 0x%02X\n", data); // Должно быть 0xB0 или подобное
-    // Безопасный таймаут в 2000 микросекунд (2 миллисекунды)
-    // Если чип MPR121 завис или шина занята, функция НЕ повесит процессор, 
-    // а просто вернет ошибку PICO_ERROR_TIMEOUT и пойдет дальше!
-    int res = i2c_write_blocking_until( I2C_PORT, MPR121_ADDR, & reg, 1, true, make_timeout_time_us(2000));
-    
-    if (res < 0) {
-        // Ошибка шины или таймаут — плавно выходим, возвращая 0 (кнопки не нажаты)
-        return 0; 
-    }
-
-    res = i2c_read_blocking_until( I2C_PORT, MPR121_ADDR, data, 2, false, make_timeout_time_us(2000));
+    int res = i2c_write_blocking_until(I2C_PORT, MPR121_ADDR, &reg, 1, true, make_timeout_time_us(2000));
     if (res < 0) {
         return 0;
     }
 
-    return ( uint16_t)( data[ 0] | ( data[ 1] << 8));
+    res = i2c_read_blocking_until(I2C_PORT, MPR121_ADDR, data, 2, false, make_timeout_time_us(2000));
+    if (res < 0) {
+        return 0;
+    }
+
+    return (uint16_t)(data[0] | (data[1] << 8)) & 0x0FFF;
 }

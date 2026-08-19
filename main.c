@@ -117,8 +117,8 @@ static void system_init(void) {
     // 1. Старт stdio (USB CDC)
     stdio_init_all();
     
-    sleep_ms(1000); 
-    printf("\n    === System Initialization ===\n");
+    //sleep_ms(1000); 
+    //printf("\n    === System Initialization ===\n");
 
     // Вызываем хронометрированный баннер
     print_system_banner(); 
@@ -145,6 +145,9 @@ static void system_init(void) {
     encoder_init(); // Инициализирует GP4, GP5 и GP14 (ENC_PIN_SW)
     printf("[INIT] Encoder & SW (GP14)... OK\n");
     
+    numpad_init(); // Инициализирует GP4, GP5 и GP14 (ENC_PIN_SW)
+    printf("[INIT] NUMPAD... try to init...\n");
+    
     // 5. Инициализация SD-карты (только один раз при старте)
     sd_spi_init();
     printf("Init SD...\n");
@@ -165,6 +168,7 @@ static void system_init(void) {
     // Гасим светодиод инициализации
     gpio_put(LED_INIT_PIN, 0);
     printf("=== Initialization Complete ===\n\n");
+
 }
 
 // Главный цикл приложения (Event Loop)
@@ -181,6 +185,21 @@ int main(void) {
 
     printf("Entering main loop...\n");
     while (true) {
+        //0. DEBUG MPR121
+        static uint32_t last_mpr_debug = 0;
+        if (time_us_32() - last_mpr_debug > 300000) { // Каждые 300ms
+            uint16_t touch = mpr121_read_touched();
+            if (touch != 0) {
+                printf("[MPR] Touch: 0x%03X (", touch);
+                for (int i = 0; i < 12; i++) {
+                    if (touch & (1 << i)) {
+                        printf("%d ", i);
+                    }
+                }
+                printf(")\n");
+            }
+            last_mpr_debug = time_us_32();
+        }    
         // 1. Обновление состояния кнопки (ОБЯЗАТЕЛЬНО)
         encoder_update_sw_state();
 

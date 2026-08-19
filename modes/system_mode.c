@@ -130,8 +130,14 @@ static void (*sys_pages[SYS_TOTAL_PAGES])(void) = {
 void system_mode_init(void) {
     sys_page_idx = 0;
     sys_force_redraw = true;
-    mpr121_init();
-    printf("[INIT] MPR121 Touch... %s\n", (mpr121_read_touched() != 0) ? "OK" : "FAIL");
+    //mpr121_init();
+    uint16_t test_touch = mpr121_read_touched();
+    if (test_touch == 0xFFFF) {
+        printf("[INIT] MPR121 Touch... ERROR (no response)\n");
+    } else {
+        printf("[INIT] MPR121 Touch... OK (state: 0x%03X)\n", test_touch);
+    }
+    
     load_mpr121_mapping();
     
     if (!adc_initialized) {
