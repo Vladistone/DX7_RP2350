@@ -117,11 +117,11 @@ static void system_init(void) {
     // 1. Старт stdio (USB CDC)
     stdio_init_all();
     
-    //sleep_ms(1000); 
-    //printf("\n    === System Initialization ===\n");
+    //sleep_ms(500); 
+    printf("\n    === System Initialization ===\n");
 
     // Вызываем хронометрированный баннер
-    print_system_banner(); 
+    //print_system_banner(); 
 
     // 2. Явная настройка штатной кнопки GP23 (из hw_config.h)
     gpio_init(BTN_SYS_MODE);
@@ -137,38 +137,67 @@ static void system_init(void) {
     gpio_set_dir(LED_LOOP_PIN, GPIO_OUT);
     gpio_put(LED_LOOP_PIN, 0);
 
-    // 4. Инициализация аппаратных драйверов
+    // 4. Инициализация аппаратных драйверов TFT
     tft_init(); 
     ui_set_brightness(50); // Яркость 50% сразу после инициализации TFT
     printf("[INIT] TFT Display 50%%... OK\n");
-
+    
+    // 5 ENCODER
     encoder_init(); // Инициализирует GP4, GP5 и GP14 (ENC_PIN_SW)
     printf("[INIT] Encoder & SW (GP14)... OK\n");
-    
-    numpad_init(); // Инициализирует GP4, GP5 и GP14 (ENC_PIN_SW)
-    printf("[INIT] NUMPAD... try to init...\n");
-    
-    // 5. Инициализация SD-карты (только один раз при старте)
+
+    // 6 Инициализация SD-карты (только один раз при старте)
     sd_spi_init();
     printf("Init SD...\n");
     if (!sd_storage_init()) {
         printf("[WARN] SD Storage Mount Failed!\n");
     } else {
         printf("[INIT] SD Storage Mounted!\n");
-//        sd_storage_load_theme("theme.cfg");
+    // sd_storage_load_theme("theme.cfg");
     }
     printf("[INIT] SD Card SPI... OK\n");
 
-    // 6. Инициализация профилей SysEx и файловой системы
+    // 7.1 NUMPAD MPR121 (I2C) — ПОСЛЕ SD-карты
+    sleep_ms(100);  // Добавляем задержку для стабилизации шины
+    //numpad_init();// Инициализирует GP6, GP7
+    mpr121_init();  // Инициализация MPR121 сенсорной панели
+    printf("[INIT1] MPR121 Touch... %s\n", (mpr121_read_touched() != 0) ? "OK" : "FAIL");
+    // 7.2 NUMPAD MPR121 (I2C) — ПОПЫТКА 2 (Если MPR121 не инициализируется с первого раза)
+    bool mpr_ok = false;
+    for (int attempt = 0; attempt < 3; attempt++) {
+        printf("[MPR] Init attempt %d...\n", attempt + 1);
+        mpr121_init();
+        if (mpr121_read_touched() != 0xFFFF) {  // Если чип отвечает
+            mpr_ok = true;
+            break;
+        }
+        sleep_ms(200);
+    }
+    printf("[INIT2] MPR121 Touch... %s\n", mpr_ok ? "OK" : "FAIL");
+
+    // 8. Инициализация профилей SysEx и файловой системы
     sysex_cc_map_init(&map_nucleus2_profile);
 
-    // 7. Запуск UI Engine
+    // 9. Запуск UI Engine
     //ui_engine_init();
 
-    // Гасим светодиод инициализации
+    // 10. Гасим светодиод инициализации
     gpio_put(LED_INIT_PIN, 0);
     printf("=== Initialization Complete ===\n\n");
+}
 
+// функция для "мягкого" сброса MPR121 без полной переинициализации:
+void mpr121_reset(void) {
+    printf("[MPR] Soft reset...\n");
+    uint8_t stop_cmd[] = {0x7B, 0x00};
+    i2c_write_blocking(I2C_PORT, MPR121_ADDR, stop_cmd, 2, false);
+    sleep_ms(50);
+    
+    uint8_t run_cmd[] = {0x7B, 0x0C};
+    i2c_write_blocking(I2C_PORT, MPR121_ADDR, run_cmd, 2, false);
+    sleep_ms(100);
+    
+    printf("[MPR] Reset complete\n");
 }
 
 // Главный цикл приложения (Event Loop)

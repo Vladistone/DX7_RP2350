@@ -58,8 +58,8 @@ void mpr121_init(void) {
     i2c_write_blocking(I2C_PORT, MPR121_ADDR, max_cap_cmd, 2, false);
 
     // 7. Настройка порогов
-    uint8_t touch_threshold = 8;
-    uint8_t release_threshold = 4;
+    uint8_t touch_threshold = 16;
+    uint8_t release_threshold = 8;
     
     for (int i = 0; i < 12; i++) {
         uint8_t touch_cmd[] = {0x41 + (i * 2), touch_threshold};
@@ -96,19 +96,38 @@ void mpr121_init(void) {
     printf("[MPR] Initialized successfully\n");
 }
 
+// максимально простая версия с большим таймаутом:
 uint16_t mpr121_read_touched(void) {
     uint8_t reg = 0x00;
     uint8_t data[2] = {0};
 
-    int res = i2c_write_blocking_until(I2C_PORT, MPR121_ADDR, &reg, 1, true, make_timeout_time_us(2000));
+    // Простое чтение с большим таймаутом
+    int res = i2c_write_blocking(I2C_PORT, MPR121_ADDR, &reg, 1, true);
+    if (res < 0) return 0;
+    
+    res = i2c_read_blocking(I2C_PORT, MPR121_ADDR, data, 2, false);
+    if (res < 0) return 0;
+
+    return (uint16_t)(data[0] | (data[1] << 8)) & 0x0FFF;
+}
+/*
+uint16_t mpr121_read_touched(void) {
+    uint8_t reg = 0x00;
+    uint8_t data[2] = {0};
+
+    // Используем blocking_until с таймаутом
+    int res = i2c_write_blocking_until(I2C_PORT, MPR121_ADDR, &reg, 1, true, make_timeout_time_us(1000));
     if (res < 0) {
+        //printf("[MPR] I2C write timeout\n");
         return 0;
     }
 
-    res = i2c_read_blocking_until(I2C_PORT, MPR121_ADDR, data, 2, false, make_timeout_time_us(2000));
+    res = i2c_read_blocking_until(I2C_PORT, MPR121_ADDR, data, 2, false, make_timeout_time_us(1000));
     if (res < 0) {
+        printf("[MPR] I2C read timeout\n");
         return 0;
     }
 
     return (uint16_t)(data[0] | (data[1] << 8)) & 0x0FFF;
 }
+*/

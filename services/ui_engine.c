@@ -16,7 +16,7 @@ void ui_draw_statusbar(const char* mode_tag, bool sd_status, uint8_t midi_ch) {
     clear_rect(0, 0, TFT_WIDTH, 18, current_theme.bar_bg_color);
     draw_text_scaled(10, 2, mode_tag, current_theme.bar_text_color, current_theme.bar_bg_color, 1);
     
-    draw_text_scaled(TFT_WIDTH - 120, 2, "SD: | CH:16 %d", current_theme.bar_text_color, current_theme.bar_bg_color, 1);
+    draw_text_scaled(TFT_WIDTH - 120, 2, "SD: | CH: %d", current_theme.bar_text_color, current_theme.bar_bg_color, 1);
     //draw_text_scaled(TFT_WIDTH - 80, 2, "CH:", current_theme.bar_text_color, current_theme.bar_bg_color, 1);
     //draw_text_scaled(TFT_WIDTH - 80, 2, midi_ch, current_theme.bar_text_color, current_theme.bar_bg_color, 1);
     draw_text_scaled(TFT_WIDTH - 88, 2, sd_status ? "OK" : "--", sd_status ? 0x07E0 : 0xF800, current_theme.bar_bg_color, 1);
